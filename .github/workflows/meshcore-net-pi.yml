@@ -102,9 +102,9 @@ jobs:
           chown -R meshcore-netcore:meshcore-netcore /var/lib/meshcore /var/log/meshcore-netcore || true
           chown root:meshcore-netcore /etc/meshcore-netcore || true
           chmod 775 /etc/meshcore-netcore || true
-          mkdir -p /etc/metcore-netcore
-          chown root:meshcore-netcore /etc/metcore-netcore || true
-          chmod 775 /etc/metcore-netcore || true
+          mkdir -p /etc/meshcore-netcore
+          chown root:meshcore-netcore /etc/meshcore-netcore || true
+          chmod 775 /etc/meshcore-netcore || true
           if [ -f /etc/meshcore-netcore/config.toml ]; then
             chown root:meshcore-netcore /etc/meshcore-netcore/config.toml || true
             chmod 664 /etc/meshcore-netcore/config.toml || true
@@ -113,13 +113,13 @@ jobs:
             chown root:meshcore-netcore /etc/meshcore-netcore/readonly.toml || true
             chmod 664 /etc/meshcore-netcore/readonly.toml || true
           fi
-          if [ ! -s /etc/metcore-netcore/password ] || [ ! -s /etc/metcore-netcore/private ] || [ ! -s /etc/metcore-netcore/public ]; then
-            /var/lib/meshcore/meshcore-net --generate-admin-keys /etc/metcore-netcore || true
+          if [ ! -s /etc/meshcore-netcore/password ] || [ ! -s /etc/meshcore-netcore/private ] || [ ! -s /etc/meshcore-netcore/public ]; then
+            /var/lib/meshcore/meshcore-net --generate-admin-keys /etc/meshcore-netcore || true
           fi
           for credential in password private public; do
-            if [ -f /etc/metcore-netcore/$credential ]; then
-              chown root:meshcore-netcore /etc/metcore-netcore/$credential || true
-              chmod 664 /etc/metcore-netcore/$credential || true
+            if [ -f /etc/meshcore-netcore/$credential ]; then
+              chown root:meshcore-netcore /etc/meshcore-netcore/$credential || true
+              chmod 664 /etc/meshcore-netcore/$credential || true
             fi
           done
           if command -v systemctl >/dev/null 2>&1; then

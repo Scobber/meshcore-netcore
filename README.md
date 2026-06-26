@@ -226,7 +226,7 @@ By default, `install.sh` installs:
 - runtime files: `/var/lib/meshcore`
 - executable symlink: `/usr/local/bin/meshcore-net`
 - configuration directory: `/etc/meshcore-netcore`
-- credential directory: `/etc/metcore-netcore`
+- credential directory: `/etc/meshcore-netcore`
 - systemd unit: `/etc/systemd/system/meshcore-netcore.service`
 
 It also copies default config files from the repository into `/etc/meshcore-netcore` if they are not already present:
@@ -234,7 +234,7 @@ It also copies default config files from the repository into `/etc/meshcore-netc
 - `config.toml`
 - `readonly.toml`
 
-Admin credentials are stored separately under `/etc/metcore-netcore`:
+Admin credentials are stored separately under `/etc/meshcore-netcore`:
 
 - `public`
 - `private`
@@ -315,7 +315,7 @@ config file are in use.
 
 The default config file creates a single companion radio listening on
 port 5000, using the companion identity stored in
-`/etc/metcore-netcore/private`.
+`/etc/meshcore-netcore/private`.
 
 If the key file does not exist, the host generates it during startup and
 records the resulting key path in the log file (which defaults to

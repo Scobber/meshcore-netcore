@@ -26,7 +26,7 @@ ProtectHome=yes
 NoNewPrivileges=yes
 AmbientCapabilities=CAP_NET_BIND_SERVICE
 CapabilityBoundingSet=CAP_NET_BIND_SERVICE
-ReadWritePaths=/etc/meshcore-netcore /etc/metcore-netcore /var/lib/meshcore /var/log/meshcore-netcore
+ReadWritePaths=/etc/meshcore-netcore /var/lib/meshcore /var/log/meshcore-netcore
 
 [Install]
 WantedBy=multi-user.target

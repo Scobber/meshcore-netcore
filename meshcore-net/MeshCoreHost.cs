@@ -7,7 +7,7 @@ namespace MeshCoreNet;
 /// </summary>
 public sealed class MeshHost
 {
-    private const string CredentialDirectoryPath = "/etc/metcore-netcore";
+    private const string CredentialDirectoryPath = "/etc/meshcore-netcore";
     private readonly Dictionary<string, object?> _config;
     private readonly string _configPath;
     private readonly HardwarePlatform _hardware = new();

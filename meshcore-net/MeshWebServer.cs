@@ -16,7 +16,7 @@ namespace MeshCoreNet;
 
 public sealed class MeshWebServer
 {
-    private const string CredentialDirectoryPath = "/etc/metcore-netcore";
+    private const string CredentialDirectoryPath = "/etc/meshcore-netcore";
     private readonly Dictionary<string, object?> _config;
     private readonly string _configPath;
     private readonly int _port;

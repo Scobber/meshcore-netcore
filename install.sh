@@ -5,7 +5,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 PUBLISH_DIR="${SCRIPT_DIR}/publish/linux-arm64"
 BIN_DIR="/usr/local/bin"
 CONFIG_DIR="/etc/meshcore-netcore"
-CREDENTIAL_DIR="/etc/metcore-netcore"
+CREDENTIAL_DIR="/etc/meshcore-netcore"
+LEGACY_CREDENTIAL_DIR="/etc/metcore-netcore"
 DATA_DIR="/var/lib/meshcore"
 LOG_DIR="/var/log/meshcore-netcore"
 SYSTEMD_DIR="/etc/systemd/system"
@@ -21,7 +22,7 @@ Usage: ${0##*/} [options]
 Options:
   -b, --bin-dir <path>        Binary install directory (default: /usr/local/bin)
   -c, --config-dir <path>     Configuration directory (default: /etc/meshcore-netcore)
-  -C, --credential-dir <path> Credential directory (default: /etc/metcore-netcore)
+  -C, --credential-dir <path> Credential directory (default: /etc/meshcore-netcore)
   -d, --data-dir <path>       Data/binary directory (default: /var/lib/meshcore)
   -p, --publish-dir <path>    Publish artifacts directory (default: publish/linux-arm64)
   -h, --help                  Show this help message
@@ -29,7 +30,7 @@ Options:
 Examples:
   ./install.sh
   ./install.sh --publish-dir /tmp/publish/linux-arm64
-  ./install.sh --config-dir /etc/meshcore-netcore --credential-dir /etc/metcore-netcore --data-dir /var/lib/meshcore
+  ./install.sh --config-dir /etc/meshcore-netcore --credential-dir /etc/meshcore-netcore --data-dir /var/lib/meshcore
 EOF
 }
 
@@ -108,6 +109,14 @@ if [ ! -f "$CONFIG_DIR/readonly.toml" ] && [ -f "$SCRIPT_DIR/readonly.toml" ]; t
   echo "Default readonly config copied to $CONFIG_DIR/readonly.toml"
 fi
 
+if [ -d "$LEGACY_CREDENTIAL_DIR" ] && [ "$LEGACY_CREDENTIAL_DIR" != "$CREDENTIAL_DIR" ]; then
+  for credential in password private public; do
+    if [ -f "$LEGACY_CREDENTIAL_DIR/$credential" ] && [ ! -f "$CREDENTIAL_DIR/$credential" ]; then
+      sudo cp "$LEGACY_CREDENTIAL_DIR/$credential" "$CREDENTIAL_DIR/$credential"
+    fi
+  done
+fi
+
 if [ ! -f "$CREDENTIAL_DIR/password" ]; then
   sudo touch "$CREDENTIAL_DIR/password"
 fi
@@ -145,7 +154,7 @@ ProtectHome=yes
 NoNewPrivileges=yes
 AmbientCapabilities=CAP_NET_BIND_SERVICE
 CapabilityBoundingSet=CAP_NET_BIND_SERVICE
-ReadWritePaths=/etc/meshcore-netcore /etc/metcore-netcore /var/lib/meshcore /var/log/meshcore-netcore
+ReadWritePaths=/etc/meshcore-netcore /var/lib/meshcore /var/log/meshcore-netcore
 
 [Install]
 WantedBy=multi-user.target
