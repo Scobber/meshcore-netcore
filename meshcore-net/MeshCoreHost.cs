@@ -90,13 +90,17 @@ public sealed class MeshHost
             await device.StartAsync(cancellationToken, dispatcher);
         }
 
-        var webServer = new MeshWebServer(
-            _config,
-            _configPath,
-            relaySnapshotProvider: () => BuildRelaySnapshot(dispatcher, interfaces, devices),
-            nodeSnapshotProvider: () => BuildNodeSnapshot(dispatcher, devices),
-            debugSnapshotProvider: () => dispatcher.GetDebugSnapshot());
-        var webServerTask = webServer.StartAsync(cancellationToken);
+        var webServerTask = Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+        if (mode == HostServiceMode.All)
+        {
+            var webServer = new MeshWebServer(
+                _config,
+                _configPath,
+                relaySnapshotProvider: () => BuildRelaySnapshot(dispatcher, interfaces, devices),
+                nodeSnapshotProvider: () => BuildNodeSnapshot(dispatcher, devices),
+                debugSnapshotProvider: () => dispatcher.GetDebugSnapshot());
+            webServerTask = webServer.StartAsync(cancellationToken);
+        }
 
         Console.WriteLine("MeshCore .NET host is running. Press Ctrl+C to stop.");
 
