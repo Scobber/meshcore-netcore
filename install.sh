@@ -137,6 +137,8 @@ WantedBy=multi-user.target
 Alias=meshcore.service
 EOF
 
+sudo ln -sf "$SYSTEMD_DIR/$SERVICE_NAME" "$SYSTEMD_DIR/meshcore.service"
+
 sudo chown -R "$SERVICE_USER:$SERVICE_GROUP" "$DATA_DIR" "$CONFIG_DIR" "$LOG_DIR"
 
 sudo systemctl daemon-reload
