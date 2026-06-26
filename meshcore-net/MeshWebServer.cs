@@ -571,6 +571,36 @@ public sealed class MeshWebServer
                     <option value="sx127x">sx127x</option>
                 </select>
             </label>
+            <label>LoRa region/profile:
+                <select id="cfg-repeater-profile">
+                    <option value="eu868-narrow">EU868 Narrow</option>
+                    <option value="eu868-wide">EU868 Wide</option>
+                    <option value="eu433-narrow">EU433 Narrow</option>
+                    <option value="eu433-wide">EU433 Wide</option>
+                    <option value="us915-narrow">US915 Narrow</option>
+                    <option value="us915-wide">US915 Wide</option>
+                    <option value="au915-narrow">AU915 Narrow</option>
+                    <option value="au915-wide">AU915 Wide</option>
+                    <option value="as923-narrow">AS923 Narrow</option>
+                    <option value="as923-wide">AS923 Wide</option>
+                    <option value="in865-narrow">IN865 Narrow</option>
+                    <option value="in865-wide">IN865 Wide</option>
+                    <option value="kr920-narrow">KR920 Narrow</option>
+                    <option value="kr920-wide">KR920 Wide</option>
+                    <option value="ru864-narrow">RU864 Narrow</option>
+                    <option value="ru864-wide">RU864 Wide</option>
+                    <option value="cn470-narrow">CN470 Narrow</option>
+                    <option value="cn470-wide">CN470 Wide</option>
+                    <option value="cn779-narrow">CN779 Narrow</option>
+                    <option value="cn779-wide">CN779 Wide</option>
+                    <option value="jp920-narrow">JP920 Narrow</option>
+                    <option value="jp920-wide">JP920 Wide</option>
+                    <option value="custom">Custom (manual)</option>
+                </select>
+            </label>
+            <label>Profile actions:
+                <button id="cfg-repeater-apply-profile" type="button">Apply profile defaults</button>
+            </label>
             <label>LoRa frequency (Hz):
                 <input id="cfg-repeater-frequency" type="number" min="100000000" max="1000000000" />
             </label>
@@ -808,6 +838,44 @@ public sealed class MeshWebServer
             return document.getElementById('config-status');
         }
 
+        const loraProfiles = {
+            'eu868-narrow': { frequency: 869618000, bw: 62500, sf: 8, cr: 8, txpower: 22 },
+            'eu868-wide': { frequency: 868100000, bw: 125000, sf: 8, cr: 8, txpower: 22 },
+            'eu433-narrow': { frequency: 433175000, bw: 62500, sf: 8, cr: 8, txpower: 20 },
+            'eu433-wide': { frequency: 433175000, bw: 125000, sf: 8, cr: 8, txpower: 20 },
+            'us915-narrow': { frequency: 915000000, bw: 62500, sf: 8, cr: 8, txpower: 22 },
+            'us915-wide': { frequency: 915000000, bw: 125000, sf: 8, cr: 8, txpower: 22 },
+            'au915-narrow': { frequency: 916800000, bw: 62500, sf: 8, cr: 8, txpower: 22 },
+            'au915-wide': { frequency: 916800000, bw: 125000, sf: 8, cr: 8, txpower: 22 },
+            'as923-narrow': { frequency: 923200000, bw: 62500, sf: 8, cr: 8, txpower: 16 },
+            'as923-wide': { frequency: 923200000, bw: 125000, sf: 8, cr: 8, txpower: 16 },
+            'in865-narrow': { frequency: 865062500, bw: 62500, sf: 8, cr: 8, txpower: 20 },
+            'in865-wide': { frequency: 865062500, bw: 125000, sf: 8, cr: 8, txpower: 20 },
+            'kr920-narrow': { frequency: 922100000, bw: 62500, sf: 8, cr: 8, txpower: 14 },
+            'kr920-wide': { frequency: 922100000, bw: 125000, sf: 8, cr: 8, txpower: 14 },
+            'ru864-narrow': { frequency: 864100000, bw: 62500, sf: 8, cr: 8, txpower: 20 },
+            'ru864-wide': { frequency: 864100000, bw: 125000, sf: 8, cr: 8, txpower: 20 },
+            'cn470-narrow': { frequency: 470300000, bw: 62500, sf: 8, cr: 8, txpower: 17 },
+            'cn470-wide': { frequency: 470300000, bw: 125000, sf: 8, cr: 8, txpower: 17 },
+            'cn779-narrow': { frequency: 779500000, bw: 62500, sf: 8, cr: 8, txpower: 10 },
+            'cn779-wide': { frequency: 779500000, bw: 125000, sf: 8, cr: 8, txpower: 10 },
+            'jp920-narrow': { frequency: 920800000, bw: 62500, sf: 8, cr: 8, txpower: 13 },
+            'jp920-wide': { frequency: 920800000, bw: 125000, sf: 8, cr: 8, txpower: 13 }
+        };
+
+        function applyLoraProfileDefaults(profileKey) {
+            if (!profileKey || profileKey === 'custom' || !(profileKey in loraProfiles)) {
+                return;
+            }
+
+            const profile = loraProfiles[profileKey];
+            document.getElementById('cfg-repeater-frequency').value = profile.frequency;
+            document.getElementById('cfg-repeater-bandwidth').value = profile.bw;
+            document.getElementById('cfg-repeater-sf').value = profile.sf;
+            document.getElementById('cfg-repeater-cr').value = profile.cr;
+            document.getElementById('cfg-repeater-txpower').value = profile.txpower;
+        }
+
         function getPath(root, path, fallback = null) {
             let current = root;
             for (const key of path) {
@@ -859,6 +927,11 @@ public sealed class MeshWebServer
             document.getElementById('cfg-repeater-name').value = repeaterDeviceSection.name ?? 'Mesh Relay';
             document.getElementById('cfg-repeater-interface-name').value = repeaterInterfaceName;
             document.getElementById('cfg-repeater-chip').value = repeaterInterfaceSection.chip ?? 'sx126x';
+
+            const configuredProfile = (repeaterInterfaceSection.profile ?? repeaterInterfaceSection.region ?? repeaterInterfaceSection.band ?? 'eu868-narrow').toString().toLowerCase();
+            const profileInput = document.getElementById('cfg-repeater-profile');
+            profileInput.value = configuredProfile in loraProfiles ? configuredProfile : 'custom';
+
             document.getElementById('cfg-repeater-frequency').value = repeaterInterfaceSection.frequency ?? 869618000;
             document.getElementById('cfg-repeater-bandwidth').value = repeaterInterfaceSection.bw ?? 62500;
             document.getElementById('cfg-repeater-sf').value = repeaterInterfaceSection.sf ?? 8;
@@ -921,6 +994,14 @@ public sealed class MeshWebServer
 
                 interfaceRoot[repeaterInterfaceName].type = 'lora';
                 interfaceRoot[repeaterInterfaceName].chip = document.getElementById('cfg-repeater-chip').value;
+                const selectedProfile = document.getElementById('cfg-repeater-profile').value;
+                if (selectedProfile && selectedProfile !== 'custom') {
+                    interfaceRoot[repeaterInterfaceName].profile = selectedProfile;
+                    delete interfaceRoot[repeaterInterfaceName].region;
+                    delete interfaceRoot[repeaterInterfaceName].band;
+                } else {
+                    delete interfaceRoot[repeaterInterfaceName].profile;
+                }
                 interfaceRoot[repeaterInterfaceName].frequency = Number(document.getElementById('cfg-repeater-frequency').value || 869618000);
                 interfaceRoot[repeaterInterfaceName].bw = Number(document.getElementById('cfg-repeater-bandwidth').value || 62500);
                 interfaceRoot[repeaterInterfaceName].sf = Number(document.getElementById('cfg-repeater-sf').value || 8);
@@ -1034,6 +1115,24 @@ public sealed class MeshWebServer
         document.getElementById('reload').addEventListener('click', loadConfig);
         document.getElementById('save').addEventListener('click', saveConfig);
         document.getElementById('save-raw').addEventListener('click', saveRawConfig);
+        document.getElementById('cfg-repeater-profile').addEventListener('change', event => {
+            const selected = event.target.value;
+            if (selected === 'custom') {
+                setStatus('Custom profile selected. Manual LoRa values are unchanged.');
+            } else {
+                setStatus('Profile selected. Click "Apply profile defaults" to update LoRa values.');
+            }
+        });
+        document.getElementById('cfg-repeater-apply-profile').addEventListener('click', () => {
+            const selected = document.getElementById('cfg-repeater-profile').value;
+            if (selected === 'custom') {
+                setStatus('Custom profile does not apply defaults. Edit values manually.');
+                return;
+            }
+
+            applyLoraProfileDefaults(selected);
+            setStatus(`Applied LoRa defaults for profile: ${selected}.`);
+        });
         document.getElementById('export-diagnostics').addEventListener('click', async () => {
             const response = await fetch('/api/diagnostics');
             if (!response.ok) {
