@@ -25,7 +25,8 @@ public sealed record LoRaOptions(
     bool Dio2RfSwitch,
     double? Dio3Voltage,
     double? Dio3TcxoDelay,
-    string? ChipKind = "sx126x");
+    string? ChipKind = "sx126x",
+    bool RequireHardware = true);
 
 public class LinuxLoRaInterface : MeshInterfaceBase
 {
@@ -50,11 +51,23 @@ public class LinuxLoRaInterface : MeshInterfaceBase
         }
         catch (DllNotFoundException ex) when (ex.Message.Contains("libgpiod", StringComparison.OrdinalIgnoreCase))
         {
+            if (_options.RequireHardware)
+            {
+                throw new InvalidOperationException(
+                    $"LoRa interface '{Name}' requires libgpiod but it is unavailable: {ex.Message}", ex);
+            }
+
             _hardwareReady = false;
             Console.WriteLine($"LoRa interface '{Name}' is running in degraded mode because libgpiod is unavailable: {ex.Message}");
         }
         catch (TypeInitializationException ex) when (ex.InnerException is DllNotFoundException inner && inner.Message.Contains("libgpiod", StringComparison.OrdinalIgnoreCase))
         {
+            if (_options.RequireHardware)
+            {
+                throw new InvalidOperationException(
+                    $"LoRa interface '{Name}' requires libgpiod but it is unavailable: {inner.Message}", inner);
+            }
+
             _hardwareReady = false;
             Console.WriteLine($"LoRa interface '{Name}' is running in degraded mode because libgpiod is unavailable: {inner.Message}");
         }

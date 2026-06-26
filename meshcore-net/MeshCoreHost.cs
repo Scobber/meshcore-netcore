@@ -491,7 +491,8 @@ public sealed class MeshHost
             Dio2RfSwitch: GetBool(section, "dio2.rfswitch", false),
             Dio3Voltage: TryGetDouble(section, "dio3.voltage", out var voltage) ? voltage : null,
             Dio3TcxoDelay: TryGetDouble(section, "dio3.tcxo_delay", out var delay) ? delay : null,
-            ChipKind: GetString(section, "chip") ?? GetString(section, "hal") ?? "sx126x");
+            ChipKind: GetString(section, "chip") ?? GetString(section, "hal") ?? "sx126x",
+            RequireHardware: GetBool(section, "require_hardware", true));
     }
 
     private EspNowOptions BuildEspNowOptions(Dictionary<string, object?>? section)

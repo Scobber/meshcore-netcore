@@ -8,6 +8,8 @@ internal static class Program
 {
     private static async Task<int> Main(string[] args)
     {
+        GpioNativeCompat.Initialize();
+
         if (TryHandleUtilityCommand(args))
         {
             return 0;
