@@ -21,10 +21,17 @@ jobs:
 
       - name: Determine package version
         run: |
-          VERSION=$(grep -oPm1 '(?<=<Version>)[^<]+' Directory.Build.props)
-          if [ -z "$VERSION" ]; then
+          BASE_VERSION=$(grep -oPm1 '(?<=<Version>)[^<]+' Directory.Build.props)
+          if [ -z "$BASE_VERSION" ]; then
             echo "Could not determine version from Directory.Build.props" >&2
             exit 1
+          fi
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            TAG_NAME=${GITHUB_REF#refs/tags/}
+            TAG_VERSION=${TAG_NAME#v}
+            VERSION="$TAG_VERSION"
+          else
+            VERSION="${BASE_VERSION}.${GITHUB_RUN_NUMBER}"
           fi
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "Package version: $VERSION"
