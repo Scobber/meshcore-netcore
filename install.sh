@@ -141,7 +141,17 @@ sudo ln -sf "$SYSTEMD_DIR/$SERVICE_NAME" "$SYSTEMD_DIR/meshcore.service"
 echo "Created service alias symlink: $SYSTEMD_DIR/meshcore.service -> $SYSTEMD_DIR/$SERVICE_NAME"
 ls -l "$SYSTEMD_DIR/meshcore.service"
 
-sudo chown -R "$SERVICE_USER:$SERVICE_GROUP" "$DATA_DIR" "$CONFIG_DIR" "$LOG_DIR"
+sudo chown -R "$SERVICE_USER:$SERVICE_GROUP" "$DATA_DIR" "$LOG_DIR"
+sudo chown root:"$SERVICE_GROUP" "$CONFIG_DIR"
+sudo chmod 775 "$CONFIG_DIR"
+if [ -f "$CONFIG_DIR/config.toml" ]; then
+  sudo chown root:"$SERVICE_GROUP" "$CONFIG_DIR/config.toml"
+  sudo chmod 664 "$CONFIG_DIR/config.toml"
+fi
+if [ -f "$CONFIG_DIR/readonly.toml" ]; then
+  sudo chown root:"$SERVICE_GROUP" "$CONFIG_DIR/readonly.toml"
+  sudo chmod 664 "$CONFIG_DIR/readonly.toml"
+fi
 
 sudo systemctl daemon-reload
 sudo systemctl enable "$SERVICE_NAME"

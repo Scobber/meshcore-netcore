@@ -99,7 +99,17 @@ jobs:
           if ! id -u meshcore-netcore >/dev/null 2>&1; then
             useradd --system --no-create-home --home-dir /var/lib/meshcore --shell /usr/sbin/nologin -g meshcore-netcore meshcore-netcore || true
           fi
-          chown -R meshcore-netcore:meshcore-netcore /var/lib/meshcore /var/log/meshcore-netcore /etc/meshcore-netcore || true
+          chown -R meshcore-netcore:meshcore-netcore /var/lib/meshcore /var/log/meshcore-netcore || true
+          chown root:meshcore-netcore /etc/meshcore-netcore || true
+          chmod 775 /etc/meshcore-netcore || true
+          if [ -f /etc/meshcore-netcore/config.toml ]; then
+            chown root:meshcore-netcore /etc/meshcore-netcore/config.toml || true
+            chmod 664 /etc/meshcore-netcore/config.toml || true
+          fi
+          if [ -f /etc/meshcore-netcore/readonly.toml ]; then
+            chown root:meshcore-netcore /etc/meshcore-netcore/readonly.toml || true
+            chmod 664 /etc/meshcore-netcore/readonly.toml || true
+          fi
           if command -v systemctl >/dev/null 2>&1; then
             ln -sf /lib/systemd/system/meshcore-netcore.service /etc/systemd/system/meshcore.service || true
             echo "Created alias: /etc/systemd/system/meshcore.service -> /lib/systemd/system/meshcore-netcore.service"
