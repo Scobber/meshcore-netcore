@@ -124,6 +124,7 @@ ReadWritePaths=/etc/meshcore-netcore /var/lib/meshcore
 
 [Install]
 WantedBy=multi-user.target
+Alias=meshcore.service
 EOF
 
 sudo chown -R "$SERVICE_USER:$SERVICE_GROUP" "$DATA_DIR" "$CONFIG_DIR"

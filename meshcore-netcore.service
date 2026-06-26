@@ -27,3 +27,4 @@ ReadWritePaths=/etc/meshcore-netcore /var/lib/meshcore
 
 [Install]
 WantedBy=multi-user.target
+Alias=meshcore.service
