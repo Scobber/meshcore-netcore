@@ -221,6 +221,9 @@ Install the published runtime and systemd service:
 sudo ./install.sh
 ```
 
+For LoRa hardware mode, the host requires `libgpiod.so.2`.
+On Debian/Ubuntu this is provided by `libgpiod2` and is now auto-installed by `install.sh` when available.
+
 By default, `install.sh` installs:
 
 - runtime files: `/var/lib/meshcore`
@@ -324,10 +327,10 @@ To build locally:
 
 Then use `dpkg-deb` or `fakeroot` to build from the published package layout. The workflow performs this automatically and stores the package as an artifact.
 
-Install the package with the versioned output file name:
+Install the package with apt so dependencies are auto-resolved (including `libgpiod2`):
 
 ```bash
-sudo dpkg -i publish/linux-arm64/meshcore-netcore_0.1.0_arm64.deb
+sudo apt install ./publish/linux-arm64/meshcore-netcore_0.1.0_arm64.deb
 ```
 
 The package version is driven from `Directory.Build.props`.

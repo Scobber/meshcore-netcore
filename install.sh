@@ -74,11 +74,41 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+ensure_libgpiod() {
+  if ldconfig -p 2>/dev/null | grep -q "libgpiod\.so\.2"; then
+    return 0
+  fi
+
+  echo "libgpiod.so.2 is missing; attempting to install runtime dependency..."
+
+  if command -v apt-get >/dev/null 2>&1; then
+    sudo apt-get update
+    sudo apt-get install -y libgpiod2
+  elif command -v dnf >/dev/null 2>&1; then
+    sudo dnf install -y libgpiod
+  elif command -v yum >/dev/null 2>&1; then
+    sudo yum install -y libgpiod
+  elif command -v zypper >/dev/null 2>&1; then
+    sudo zypper --non-interactive install libgpiod2 || sudo zypper --non-interactive install libgpiod
+  else
+    echo "Could not auto-install libgpiod: no supported package manager found." >&2
+  fi
+
+  if ! ldconfig -p 2>/dev/null | grep -q "libgpiod\.so\.2"; then
+    echo "ERROR: libgpiod.so.2 is still unavailable. Install it manually and rerun install." >&2
+    echo "Debian/Ubuntu: sudo apt-get install -y libgpiod2" >&2
+    echo "RHEL/Fedora:   sudo dnf install -y libgpiod" >&2
+    return 1
+  fi
+}
+
 if [ ! -d "$PUBLISH_DIR" ]; then
   echo "Publish directory does not exist: $PUBLISH_DIR"
   echo "Run ./build.sh --publish first."
   exit 1
 fi
+
+ensure_libgpiod
 
 for service in "$WEB_SERVICE_NAME" "$REPEATER_SERVICE_NAME" "$COMPANION_SERVICE_NAME" "$LEGACY_SERVICE_NAME"; do
   if systemctl list-unit-files | grep -q "^$service"; then
