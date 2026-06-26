@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
@@ -17,6 +18,7 @@ namespace MeshCoreNet;
 public sealed class MeshWebServer
 {
     private const string CredentialDirectoryPath = "/etc/meshcore-netcore";
+    private const string DataProtectionDirectoryPath = "/var/lib/meshcore/dataprotection-keys";
     private readonly Dictionary<string, object?> _config;
     private readonly string _configPath;
     private readonly int _port;
@@ -48,6 +50,13 @@ public sealed class MeshWebServer
         {
             options.ListenAnyIP(_port);
         });
+
+        Directory.CreateDirectory(DataProtectionDirectoryPath);
+        builder.Services
+            .AddDataProtection()
+            .PersistKeysToFileSystem(new DirectoryInfo(DataProtectionDirectoryPath))
+            .SetApplicationName("meshcore-web");
+
         builder.Services.AddSingleton(this);
         builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
             .AddCookie(options =>
@@ -442,21 +451,207 @@ public sealed class MeshWebServer
         };
     }
 
-    private static string LoginPageHtml() => $"""
+    private static string LoginPageHtml() => """
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>MeshCore Admin Login</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@500&display=swap');
+
+        :root {
+            --bg-deep: #0f1724;
+            --bg-mid: #1d2d44;
+            --bg-glow: #0a9396;
+            --card: rgba(14, 24, 38, 0.82);
+            --card-edge: rgba(164, 214, 214, 0.28);
+            --text-main: #e8f0f5;
+            --text-soft: #b9cad6;
+            --field-bg: rgba(8, 14, 22, 0.65);
+            --field-border: rgba(138, 177, 189, 0.45);
+            --field-border-focus: #5de5d8;
+            --button: linear-gradient(120deg, #0a9396 0%, #4cc9f0 100%);
+            --button-text: #062029;
+            --shadow: 0 24px 48px rgba(0, 0, 0, 0.45);
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            font-family: 'Space Grotesk', 'Segoe UI', sans-serif;
+            color: var(--text-main);
+            background:
+                radial-gradient(1200px 800px at -10% -20%, rgba(76, 201, 240, 0.22) 0%, transparent 60%),
+                radial-gradient(900px 600px at 110% 10%, rgba(10, 147, 150, 0.24) 0%, transparent 60%),
+                linear-gradient(145deg, var(--bg-deep) 0%, var(--bg-mid) 100%);
+            display: grid;
+            place-items: center;
+            padding: 1.2rem;
+        }
+
+        .scene {
+            width: min(460px, 100%);
+            animation: rise-in 360ms ease-out;
+        }
+
+        .card {
+            border: 1px solid var(--card-edge);
+            background: var(--card);
+            backdrop-filter: blur(10px);
+            border-radius: 18px;
+            padding: 1.3rem;
+            box-shadow: var(--shadow);
+        }
+
+        .badge {
+            display: inline-block;
+            font-family: 'IBM Plex Mono', monospace;
+            letter-spacing: 0.06em;
+            font-size: 0.72rem;
+            color: #91e6dc;
+            border: 1px solid rgba(145, 230, 220, 0.35);
+            border-radius: 999px;
+            padding: 0.22rem 0.58rem;
+            margin-bottom: 0.75rem;
+        }
+
+        h1 {
+            margin: 0 0 0.35rem 0;
+            font-size: clamp(1.5rem, 4vw, 2rem);
+            line-height: 1.1;
+            letter-spacing: -0.02em;
+        }
+
+        p {
+            margin: 0 0 1.15rem 0;
+            color: var(--text-soft);
+            font-size: 0.96rem;
+        }
+
+        form {
+            display: grid;
+            gap: 0.85rem;
+        }
+
+        label {
+            display: grid;
+            gap: 0.35rem;
+            font-size: 0.9rem;
+            color: #d9e8f0;
+        }
+
+        input {
+            width: 100%;
+            border: 1px solid var(--field-border);
+            border-radius: 11px;
+            background: var(--field-bg);
+            color: var(--text-main);
+            font: inherit;
+            padding: 0.72rem 0.8rem;
+            transition: border-color 120ms ease, box-shadow 120ms ease, transform 120ms ease;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: var(--field-border-focus);
+            box-shadow: 0 0 0 3px rgba(93, 229, 216, 0.2);
+            transform: translateY(-1px);
+        }
+
+        input::placeholder {
+            color: #8ea8b8;
+        }
+
+        .actions {
+            margin-top: 0.2rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.8rem;
+            flex-wrap: wrap;
+        }
+
+        .hint {
+            font-size: 0.82rem;
+            color: #a8bfcc;
+        }
+
+        button {
+            border: 0;
+            border-radius: 11px;
+            background: var(--button);
+            color: var(--button-text);
+            font: 700 0.95rem 'Space Grotesk', sans-serif;
+            letter-spacing: 0.01em;
+            padding: 0.72rem 1.1rem;
+            cursor: pointer;
+            transition: transform 120ms ease, filter 120ms ease;
+        }
+
+        button:hover { filter: brightness(1.06); }
+        button:active { transform: translateY(1px); }
+
+        .footer-wrap {
+            margin-top: 0.8rem;
+            opacity: 0.9;
+        }
+
+        @keyframes rise-in {
+            from {
+                opacity: 0;
+                transform: translateY(10px) scale(0.98);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+        }
+
+        @media (max-width: 520px) {
+            .card {
+                border-radius: 14px;
+                padding: 1rem;
+            }
+
+            .actions {
+                justify-content: stretch;
+            }
+
+            button {
+                width: 100%;
+            }
+        }
+    </style>
 </head>
 <body>
-    <h1>MeshCore Admin Login</h1>
-    <form method="post" action="/login">
-        <label>Admin public key (hex): <input type="text" name="publicKey" /></label><br />
-        <label>Password: <input type="password" name="password" /></label><br />
-        <button type="submit">Sign in</button>
-    </form>
-    {FooterHtml()}
+    <main class="scene">
+        <section class="card">
+            <div class="badge">MESHCORE ADMIN</div>
+            <h1>Sign In To Router Control</h1>
+            <p>Authenticate with your admin password or approved public key to manage relay and companion settings.</p>
+            <form method="post" action="/login">
+                <label>
+                    Admin public key (hex)
+                    <input type="text" name="publicKey" placeholder="Optional" autocomplete="off" />
+                </label>
+                <label>
+                    Password
+                    <input type="password" name="password" placeholder="Enter admin password" autocomplete="current-password" />
+                </label>
+                <div class="actions">
+                    <span class="hint">Use either a valid password or a configured key.</span>
+                    <button type="submit">Sign in</button>
+                </div>
+            </form>
+            <div class="footer-wrap">
+""" + FooterHtml() + """
+            </div>
+        </section>
+    </main>
 </body>
 </html>
 """;
