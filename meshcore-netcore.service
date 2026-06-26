@@ -1,0 +1,29 @@
+[Unit]
+Description=MeshCore .NET worker service
+Documentation=man:systemd.service(5)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=meshcore-netcore
+Group=meshcore-netcore
+ExecStart=/usr/local/bin/meshcore-net /etc/meshcore-netcore/config.toml
+WorkingDirectory=/var/lib/meshcore
+Restart=always
+RestartSec=10
+StartLimitIntervalSec=60
+StartLimitBurst=3
+TimeoutStopSec=30
+KillMode=control-group
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=meshcore-netcore
+Environment=DOTNET_CLI_TELEMETRY_OPTOUT=1
+ProtectSystem=full
+ProtectHome=yes
+NoNewPrivileges=yes
+ReadWritePaths=/etc/meshcore-netcore /var/lib/meshcore
+
+[Install]
+WantedBy=multi-user.target

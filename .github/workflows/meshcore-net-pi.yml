@@ -1,0 +1,122 @@
+name: MeshCore .NET CI
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Determine package version
+        run: |
+          VERSION=$(grep -oPm1 '(?<=<Version>)[^<]+' Directory.Build.props)
+          if [ -z "$VERSION" ]; then
+            echo "Could not determine version from Directory.Build.props" >&2
+            exit 1
+          fi
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "Package version: $VERSION"
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            TAG_NAME=${GITHUB_REF#refs/tags/}
+            TAG_VERSION=${TAG_NAME#v}
+            if [ "$TAG_VERSION" != "$VERSION" ]; then
+              echo "Tag version '$TAG_VERSION' does not match package version '$VERSION'" >&2
+              exit 1
+            fi
+          fi
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore meshcore-net/meshcore-net.csproj
+
+      - name: Run tests
+        run: dotnet test meshcore-net/meshcore-net.Tests/meshcore-net.Tests.csproj --verbosity minimal
+
+      - name: Publish Raspberry Pi build
+        run: dotnet publish meshcore-net/meshcore-net.csproj -c Release -r linux-arm64 --self-contained false -o publish/linux-arm64
+
+      - name: Package Debian package
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fakeroot
+          rm -rf package
+          mkdir -p package/DEBIAN package/usr/local/bin package/var/lib/meshcore package/etc/meshcore-netcore package/lib/systemd/system
+          cp -r publish/linux-arm64/* package/var/lib/meshcore/
+          ln -s /var/lib/meshcore/meshcore-net package/usr/local/bin/meshcore-net
+          cp config.toml package/etc/meshcore-netcore/config.toml
+          cp readonly.toml package/etc/meshcore-netcore/readonly.toml
+          cp meshcore-netcore.service package/lib/systemd/system/meshcore-netcore.service
+          cat > package/DEBIAN/control <<EOF
+Package: meshcore-netcore
+Version: ${VERSION}
+Section: utils
+Priority: optional
+Architecture: arm64
+Depends: dotnet-runtime-10.0
+Maintainer: MeshCore <meshcore@example.com>
+Description: MeshCore .NET core host and management server
+ A Linux .NET host for MeshCore with companion and relay configuration support.
+EOF
+          cat > package/DEBIAN/postinst <<'EOF'
+#!/bin/sh
+set -e
+if ! getent group meshcore-netcore >/dev/null 2>&1; then
+  groupadd --system meshcore-netcore || true
+fi
+if ! id -u meshcore-netcore >/dev/null 2>&1; then
+  useradd --system --no-create-home --home-dir /var/lib/meshcore --shell /usr/sbin/nologin -g meshcore-netcore meshcore-netcore || true
+fi
+chown -R meshcore-netcore:meshcore-netcore /var/lib/meshcore /etc/meshcore-netcore || true
+if command -v systemctl >/dev/null 2>&1; then
+  systemctl daemon-reload || true
+fi
+exit 0
+EOF
+          chmod 755 package/DEBIAN/postinst
+          fakeroot dpkg-deb --build package "publish/linux-arm64/meshcore-netcore_${VERSION}_arm64.deb"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: meshcore-net-linux-arm64
+          path: publish/linux-arm64
+          if-no-files-found: error
+
+      - name: Upload Debian package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: meshcore-netcore-deb
+          path: publish/linux-arm64/meshcore-netcore_${{ env.VERSION }}_arm64.deb
+          if-no-files-found: error
+
+      - name: Package release archive
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          cd publish/linux-arm64
+          tar -czf ../../meshcore-net-linux-arm64-${VERSION}.tar.gz .
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          files: meshcore-net-linux-arm64-${{ env.VERSION }}.tar.gz
+          generate_release_notes: true
