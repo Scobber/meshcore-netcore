@@ -480,6 +480,10 @@ public sealed class MeshWebServer
         .hidden { display: none; }
         .card { padding: 1rem; background: #fff; border: 1px solid #e1e4e8; border-radius: 8px; margin-bottom: 1rem; }
         .summary { margin: 0.25rem 0 0.75rem 0; color: #586069; font-size: 0.95rem; }
+        #settings-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 0.6rem 1rem; }
+        #settings-form h3 { grid-column: 1 / -1; margin: 0.6rem 0 0.2rem 0; }
+        #settings-form label { display: flex; flex-direction: column; font-size: 0.92rem; gap: 0.2rem; }
+        #settings-form input, #settings-form select { padding: 0.4rem; }
         .health-stale { background: #fff5f5; }
         .health-weak { background: #fffbe6; }
         .health-strong { background: #f6ffed; }
@@ -539,10 +543,122 @@ public sealed class MeshWebServer
     <section id="view-config" class="card hidden">
         <h2>Configuration</h2>
         <div>
-            <button id="reload">Reload config</button>
-            <button id="save">Save config</button>
+            <button id="reload">Reload settings</button>
+            <button id="save">Save settings</button>
+            <button id="save-raw">Save raw JSON</button>
         </div>
-        <textarea id="editor"></textarea>
+        <div id="config-status" class="summary">Loading settings...</div>
+
+        <form id="settings-form">
+            <h3>Web service</h3>
+            <label>Web port:
+                <input id="cfg-web-port" type="number" min="1" max="65535" />
+            </label>
+
+            <h3>Repeater service</h3>
+            <label>
+                <input id="cfg-repeater-enabled" type="checkbox" /> Enable repeater service
+            </label>
+            <label>Repeater name:
+                <input id="cfg-repeater-name" type="text" />
+            </label>
+            <label>LoRa interface name:
+                <input id="cfg-repeater-interface-name" type="text" />
+            </label>
+            <label>LoRa chip:
+                <select id="cfg-repeater-chip">
+                    <option value="sx126x">sx126x</option>
+                    <option value="sx127x">sx127x</option>
+                </select>
+            </label>
+            <label>LoRa frequency (Hz):
+                <input id="cfg-repeater-frequency" type="number" min="100000000" max="1000000000" />
+            </label>
+            <label>LoRa bandwidth (Hz):
+                <input id="cfg-repeater-bandwidth" type="number" min="7800" max="500000" />
+            </label>
+            <label>LoRa spreading factor:
+                <input id="cfg-repeater-sf" type="number" min="5" max="12" />
+            </label>
+            <label>LoRa coding rate:
+                <input id="cfg-repeater-cr" type="number" min="5" max="8" />
+            </label>
+            <label>LoRa TX power (dBm):
+                <input id="cfg-repeater-txpower" type="number" min="-4" max="27" />
+            </label>
+            <label>
+                <input id="cfg-guest-open" type="checkbox" /> Allow guest access
+            </label>
+            <label>
+                <input id="cfg-readonly" type="checkbox" /> Read-only repeater mode
+            </label>
+            <label>Admin password:
+                <input id="cfg-admin-password" type="text" />
+            </label>
+            <label>Welcome text:
+                <input id="cfg-welcome" type="text" />
+            </label>
+
+            <h3>Companion service</h3>
+            <label>
+                <input id="cfg-companion-enabled" type="checkbox" /> Enable companion service
+            </label>
+            <label>Companion name:
+                <input id="cfg-companion-name" type="text" />
+            </label>
+            <label>Companion app interface:
+                <select id="cfg-companion-app-interface">
+                    <option value="wifi">wifi</option>
+                    <option value="serial">serial</option>
+                </select>
+            </label>
+            <label>Companion WiFi port:
+                <input id="cfg-companion-wifi-port" type="number" min="1" max="65535" />
+            </label>
+            <label>Companion WiFi listen:
+                <input id="cfg-companion-wifi-listen" type="text" placeholder="0.0.0.0" />
+            </label>
+            <label>Companion serial port:
+                <input id="cfg-companion-serial-port" type="text" placeholder="/dev/ttyS0" />
+            </label>
+            <label>Companion serial speed:
+                <input id="cfg-companion-serial-speed" type="number" min="1200" max="3000000" />
+            </label>
+            <label>Companion channels:
+                <input id="cfg-companion-channels" type="number" min="1" max="64" />
+            </label>
+            <label>
+                <input id="cfg-companion-add-public" type="checkbox" /> Add public channel automatically
+            </label>
+
+            <h3>GPS tracking</h3>
+            <label>
+                <input id="cfg-gps-enabled" type="checkbox" /> Enable GPS tracking
+            </label>
+            <label>GPS mode:
+                <select id="cfg-gps-mode">
+                    <option value="average">average</option>
+                    <option value="roaming">roaming</option>
+                </select>
+            </label>
+            <label>GPS device:
+                <input id="cfg-gps-device" type="text" />
+            </label>
+            <label>GPS baud:
+                <input id="cfg-gps-baud" type="number" min="1200" max="115200" />
+            </label>
+            <label>Sample interval (seconds):
+                <input id="cfg-gps-sample" type="number" min="1" max="86400" />
+            </label>
+            <label>Retention days:
+                <input id="cfg-gps-retention" type="number" min="1" max="3650" />
+            </label>
+        </form>
+
+        <details>
+            <summary>Advanced raw JSON</summary>
+            <textarea id="editor" style="height: 28vh;"></textarea>
+        </details>
     </section>
 
     <section id="view-debug" class="card hidden">
@@ -686,31 +802,229 @@ public sealed class MeshWebServer
                 </tr>`).join('');
         }
 
+        let currentConfig = {};
+
+        function getConfigStatus() {
+            return document.getElementById('config-status');
+        }
+
+        function getPath(root, path, fallback = null) {
+            let current = root;
+            for (const key of path) {
+                if (current === null || current === undefined || typeof current !== 'object' || !(key in current)) {
+                    return fallback;
+                }
+
+                current = current[key];
+            }
+
+            return current ?? fallback;
+        }
+
+        function ensurePath(root, path) {
+            let current = root;
+            for (const key of path) {
+                if (!(key in current) || current[key] === null || typeof current[key] !== 'object' || Array.isArray(current[key])) {
+                    current[key] = {};
+                }
+
+                current = current[key];
+            }
+
+            return current;
+        }
+
+        function setStatus(message, isError = false) {
+            const status = getConfigStatus();
+            status.textContent = message;
+            status.style.color = isError ? '#b42318' : '#586069';
+        }
+
+        function populateSettingsForm(config) {
+            const devices = Array.isArray(config.devices) ? config.devices : [];
+            const interfaces = Array.isArray(config.interfaces) ? config.interfaces : [];
+
+            const repeaterEnabled = devices.includes('repeater');
+            const companionEnabled = devices.includes('companion');
+
+            const repeaterInterfaceName = interfaces.length > 0 ? interfaces[0] : 'lora';
+            const repeaterInterfaceSection = getPath(config, ['interface', repeaterInterfaceName], {});
+            const repeaterDeviceSection = getPath(config, ['device', 'repeater'], {});
+            const companionDeviceSection = getPath(config, ['device', 'companion'], {});
+            const gps = getPath(config, ['gps'], {});
+
+            document.getElementById('cfg-web-port').value = getPath(config, ['server', 'web', 'port'], 80);
+
+            document.getElementById('cfg-repeater-enabled').checked = repeaterEnabled;
+            document.getElementById('cfg-repeater-name').value = repeaterDeviceSection.name ?? 'Mesh Relay';
+            document.getElementById('cfg-repeater-interface-name').value = repeaterInterfaceName;
+            document.getElementById('cfg-repeater-chip').value = repeaterInterfaceSection.chip ?? 'sx126x';
+            document.getElementById('cfg-repeater-frequency').value = repeaterInterfaceSection.frequency ?? 869618000;
+            document.getElementById('cfg-repeater-bandwidth').value = repeaterInterfaceSection.bw ?? 62500;
+            document.getElementById('cfg-repeater-sf').value = repeaterInterfaceSection.sf ?? 8;
+            document.getElementById('cfg-repeater-cr').value = repeaterInterfaceSection.cr ?? 8;
+            document.getElementById('cfg-repeater-txpower').value = repeaterInterfaceSection.txpower ?? 22;
+            document.getElementById('cfg-guest-open').checked = !!repeaterDeviceSection['guest.open'];
+            document.getElementById('cfg-readonly').checked = !!repeaterDeviceSection['readonly'];
+            document.getElementById('cfg-admin-password').value = repeaterDeviceSection['admin.password'] ?? '';
+            document.getElementById('cfg-welcome').value = repeaterDeviceSection['welcome'] ?? '';
+
+            document.getElementById('cfg-companion-enabled').checked = companionEnabled;
+            document.getElementById('cfg-companion-name').value = companionDeviceSection.name ?? 'Companion Radio';
+            document.getElementById('cfg-companion-app-interface').value = companionDeviceSection.interface ?? 'wifi';
+            document.getElementById('cfg-companion-wifi-port').value = companionDeviceSection['wifi.port'] ?? 5000;
+            document.getElementById('cfg-companion-wifi-listen').value = companionDeviceSection['wifi.listen'] ?? '0.0.0.0';
+            document.getElementById('cfg-companion-serial-port').value = companionDeviceSection['serial.port'] ?? '/dev/ttyS0';
+            document.getElementById('cfg-companion-serial-speed').value = companionDeviceSection['serial.speed'] ?? 115200;
+            document.getElementById('cfg-companion-channels').value = companionDeviceSection.channels ?? 32;
+            document.getElementById('cfg-companion-add-public').checked = companionDeviceSection.add_public_channel ?? true;
+
+            document.getElementById('cfg-gps-enabled').checked = !!gps.enabled;
+            document.getElementById('cfg-gps-mode').value = gps.mode ?? 'average';
+            document.getElementById('cfg-gps-device').value = gps.device ?? '/dev/serial0';
+            document.getElementById('cfg-gps-baud').value = gps.baud ?? 9600;
+            document.getElementById('cfg-gps-sample').value = gps.sample_interval_seconds ?? 60;
+            document.getElementById('cfg-gps-retention').value = gps.retention_days ?? 365;
+        }
+
+        function buildConfigFromForm() {
+            const config = JSON.parse(JSON.stringify(currentConfig ?? {}));
+            const webPort = Number(document.getElementById('cfg-web-port').value || 80);
+            const repeaterEnabled = document.getElementById('cfg-repeater-enabled').checked;
+            const companionEnabled = document.getElementById('cfg-companion-enabled').checked;
+            const repeaterInterfaceName = (document.getElementById('cfg-repeater-interface-name').value || 'lora').trim();
+
+            const devices = [];
+            if (repeaterEnabled) {
+                devices.push('repeater');
+            }
+
+            if (companionEnabled) {
+                devices.push('companion');
+            }
+
+            if (devices.length === 0) {
+                devices.push('repeater');
+            }
+
+            config.interfaces = repeaterEnabled ? [repeaterInterfaceName] : [];
+            config.devices = devices;
+
+            const serverWeb = ensurePath(config, ['server', 'web']);
+            serverWeb.port = Math.min(65535, Math.max(1, webPort));
+
+            const interfaceRoot = ensurePath(config, ['interface']);
+            if (repeaterEnabled) {
+                if (!(repeaterInterfaceName in interfaceRoot) || typeof interfaceRoot[repeaterInterfaceName] !== 'object' || Array.isArray(interfaceRoot[repeaterInterfaceName])) {
+                    interfaceRoot[repeaterInterfaceName] = {};
+                }
+
+                interfaceRoot[repeaterInterfaceName].type = 'lora';
+                interfaceRoot[repeaterInterfaceName].chip = document.getElementById('cfg-repeater-chip').value;
+                interfaceRoot[repeaterInterfaceName].frequency = Number(document.getElementById('cfg-repeater-frequency').value || 869618000);
+                interfaceRoot[repeaterInterfaceName].bw = Number(document.getElementById('cfg-repeater-bandwidth').value || 62500);
+                interfaceRoot[repeaterInterfaceName].sf = Number(document.getElementById('cfg-repeater-sf').value || 8);
+                interfaceRoot[repeaterInterfaceName].cr = Number(document.getElementById('cfg-repeater-cr').value || 8);
+                interfaceRoot[repeaterInterfaceName].txpower = Number(document.getElementById('cfg-repeater-txpower').value || 22);
+            }
+
+            const deviceRoot = ensurePath(config, ['device']);
+            if (!("repeater" in deviceRoot) || typeof deviceRoot.repeater !== 'object' || Array.isArray(deviceRoot.repeater)) {
+                deviceRoot.repeater = {};
+            }
+
+            deviceRoot.repeater.type = 'repeater';
+            deviceRoot.repeater.name = (document.getElementById('cfg-repeater-name').value || 'Mesh Relay').trim();
+            deviceRoot.repeater['guest.open'] = document.getElementById('cfg-guest-open').checked;
+            deviceRoot.repeater['readonly'] = document.getElementById('cfg-readonly').checked;
+
+            const adminPassword = document.getElementById('cfg-admin-password').value.trim();
+            if (adminPassword.length > 0) {
+                deviceRoot.repeater['admin.password'] = adminPassword;
+            } else {
+                delete deviceRoot.repeater['admin.password'];
+            }
+
+            const welcome = document.getElementById('cfg-welcome').value.trim();
+            if (welcome.length > 0) {
+                deviceRoot.repeater.welcome = welcome;
+            } else {
+                delete deviceRoot.repeater.welcome;
+            }
+
+            if (!("companion" in deviceRoot) || typeof deviceRoot.companion !== 'object' || Array.isArray(deviceRoot.companion)) {
+                deviceRoot.companion = {};
+            }
+
+            deviceRoot.companion.type = 'companion';
+            deviceRoot.companion.name = (document.getElementById('cfg-companion-name').value || 'Companion Radio').trim();
+            deviceRoot.companion.interface = document.getElementById('cfg-companion-app-interface').value;
+            deviceRoot.companion['wifi.port'] = Number(document.getElementById('cfg-companion-wifi-port').value || 5000);
+            deviceRoot.companion['wifi.listen'] = (document.getElementById('cfg-companion-wifi-listen').value || '0.0.0.0').trim();
+            deviceRoot.companion['serial.port'] = (document.getElementById('cfg-companion-serial-port').value || '/dev/ttyS0').trim();
+            deviceRoot.companion['serial.speed'] = Number(document.getElementById('cfg-companion-serial-speed').value || 115200);
+            deviceRoot.companion.channels = Number(document.getElementById('cfg-companion-channels').value || 32);
+            deviceRoot.companion.add_public_channel = document.getElementById('cfg-companion-add-public').checked;
+
+            const gps = ensurePath(config, ['gps']);
+            gps.enabled = document.getElementById('cfg-gps-enabled').checked;
+            gps.mode = document.getElementById('cfg-gps-mode').value;
+            gps.device = (document.getElementById('cfg-gps-device').value || '/dev/serial0').trim();
+            gps.baud = Number(document.getElementById('cfg-gps-baud').value || 9600);
+            gps.sample_interval_seconds = Number(document.getElementById('cfg-gps-sample').value || 60);
+            gps.retention_days = Number(document.getElementById('cfg-gps-retention').value || 365);
+
+            return config;
+        }
+
+        async function postConfig(config) {
+            const response = await fetch('/api/config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(config)
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error?.error || 'Save failed');
+            }
+
+            currentConfig = config;
+            document.getElementById('editor').value = JSON.stringify(config, null, 2);
+        }
+
         async function loadConfig() {
             const response = await fetch('/api/config');
             if (!response.ok) {
                 alert('Unable to load configuration.');
+                setStatus('Unable to load settings.', true);
                 return;
             }
             const json = await response.json();
+            currentConfig = json;
+            populateSettingsForm(json);
             document.getElementById('editor').value = JSON.stringify(json, null, 2);
+            setStatus('Settings loaded.');
         }
 
         async function saveConfig() {
             try {
-                const config = JSON.parse(document.getElementById('editor').value);
-                const response = await fetch('/api/config', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(config)
-                });
-                if (!response.ok) {
-                    const error = await response.json();
-                    throw new Error(error?.error || 'Save failed');
-                }
-                alert('Configuration saved.');
+                const config = buildConfigFromForm();
+                await postConfig(config);
+                setStatus('Settings saved.');
             } catch (exception) {
-                alert(exception.message);
+                setStatus(exception.message, true);
+            }
+        }
+
+        async function saveRawConfig() {
+            try {
+                const config = JSON.parse(document.getElementById('editor').value);
+                await postConfig(config);
+                populateSettingsForm(config);
+                setStatus('Raw JSON saved.');
+            } catch (exception) {
+                setStatus(exception.message, true);
             }
         }
 
@@ -719,6 +1033,7 @@ public sealed class MeshWebServer
         document.getElementById('refresh-debug').addEventListener('click', loadDebug);
         document.getElementById('reload').addEventListener('click', loadConfig);
         document.getElementById('save').addEventListener('click', saveConfig);
+        document.getElementById('save-raw').addEventListener('click', saveRawConfig);
         document.getElementById('export-diagnostics').addEventListener('click', async () => {
             const response = await fetch('/api/diagnostics');
             if (!response.ok) {
