@@ -32,6 +32,7 @@ public class LinuxLoRaInterface : MeshInterfaceBase
     private readonly ISxRadioHal _radio;
     private readonly LoRaOptions _options;
     private readonly Queue<(DateTimeOffset At, double Ms)> _airtime = new();
+    private bool _hardwareReady = true;
 
     public LinuxLoRaInterface(string name, LoRaOptions options, ISxRadioHal? radio = null)
         : base(name, "lora")
@@ -42,12 +43,36 @@ public class LinuxLoRaInterface : MeshInterfaceBase
 
     public override async Task StartAsync(CancellationToken cancellationToken)
     {
-        await _radio.InitializeAsync(cancellationToken).ConfigureAwait(false);
-        _ = Task.Run(() => ReceiveLoopAsync(cancellationToken), cancellationToken);
+        try
+        {
+            await _radio.InitializeAsync(cancellationToken).ConfigureAwait(false);
+            _ = Task.Run(() => ReceiveLoopAsync(cancellationToken), cancellationToken);
+        }
+        catch (DllNotFoundException ex) when (ex.Message.Contains("libgpiod", StringComparison.OrdinalIgnoreCase))
+        {
+            _hardwareReady = false;
+            Console.WriteLine($"LoRa interface '{Name}' is running in degraded mode because libgpiod is unavailable: {ex.Message}");
+        }
+        catch (TypeInitializationException ex) when (ex.InnerException is DllNotFoundException inner && inner.Message.Contains("libgpiod", StringComparison.OrdinalIgnoreCase))
+        {
+            _hardwareReady = false;
+            Console.WriteLine($"LoRa interface '{Name}' is running in degraded mode because libgpiod is unavailable: {inner.Message}");
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("not initialized", StringComparison.OrdinalIgnoreCase))
+        {
+            _hardwareReady = false;
+            Console.WriteLine($"LoRa interface '{Name}' is running in degraded mode: {ex.Message}");
+        }
     }
 
     public override async ValueTask<double> TransmitAsync(byte[] packetData, CancellationToken cancellationToken)
     {
+        if (!_hardwareReady)
+        {
+            Console.WriteLine($"LoRa interface '{Name}' dropped {packetData.Length} bytes because radio hardware is unavailable.");
+            return 0;
+        }
+
         var txTime = await _radio.TransmitAsync(packetData, cancellationToken).ConfigureAwait(false);
         _airtime.Enqueue((DateTimeOffset.UtcNow, txTime));
         while (_airtime.Count > 5)
