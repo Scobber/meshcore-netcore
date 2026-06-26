@@ -91,7 +91,7 @@ jobs:
           Section: utils
           Priority: optional
           Architecture: arm64
-          Depends: libgpiod2 | libgpiod2t64
+          Depends: libgpiod3 | libgpiod2t64 | libgpiod2 | libgpiod1 | libgpiod0 | gpiod
           Maintainer: MeshCore <meshcore@example.com>
           Description: MeshCore .NET core host and management server
            A Linux .NET host for MeshCore with companion and relay configuration support.

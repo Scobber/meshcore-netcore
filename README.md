@@ -221,8 +221,8 @@ Install the published runtime and systemd service:
 sudo ./install.sh
 ```
 
-For LoRa hardware mode, the host requires `libgpiod.so.2`.
-On Debian/Ubuntu this is typically provided by `libgpiod2` (or `libgpiod2t64` on newer releases) and is now auto-installed by `install.sh` when available.
+For LoRa hardware mode, the host requires `libgpiod` userspace support.
+Package names vary by distro release (`libgpiod0/1/2/2t64/3` or `gpiod`), and `install.sh` now tries these variants automatically when available.
 
 By default, `install.sh` installs:
 
