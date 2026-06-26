@@ -13,6 +13,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 
 namespace MeshCoreNet;
 
@@ -20,6 +21,13 @@ public sealed class MeshWebServer
 {
     private const string CredentialDirectoryPath = "/etc/meshcore-netcore";
     private const string DataProtectionDirectoryPath = "/var/lib/meshcore/dataprotection-keys";
+        private const string FaviconSvg = """
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+    <rect width="64" height="64" rx="14" fill="#0f1724"/>
+    <circle cx="32" cy="32" r="20" fill="#0a9396" opacity="0.28"/>
+    <path d="M14 40l10-18 8 13 8-9 10 14" fill="none" stroke="#e8f0f5" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
+""";
     private readonly Dictionary<string, object?> _config;
     private readonly string _configPath;
     private readonly int _port;
@@ -51,6 +59,10 @@ public sealed class MeshWebServer
         {
             options.ListenAnyIP(_port);
         });
+        builder.Logging.AddFilter("Microsoft.AspNetCore.Hosting.Diagnostics", LogLevel.Warning);
+        builder.Logging.AddFilter("Microsoft.AspNetCore.Routing.EndpointMiddleware", LogLevel.Warning);
+        builder.Logging.AddFilter("Microsoft.AspNetCore.Authorization", LogLevel.Warning);
+        builder.Logging.AddFilter("Microsoft.AspNetCore.Authentication", LogLevel.Warning);
 
         Directory.CreateDirectory(DataProtectionDirectoryPath);
         builder.Services
@@ -74,20 +86,27 @@ public sealed class MeshWebServer
         app.Use(async (context, next) =>
         {
             var started = Stopwatch.StartNew();
+            Exception? caught = null;
             try
             {
                 await next();
             }
             catch (Exception ex)
             {
-                started.Stop();
-                Console.Error.WriteLine($"HTTP {context.Request.Method} {context.Request.Path}{context.Request.QueryString} -> 500 {started.ElapsedMilliseconds}ms ({ex.GetType().Name}: {ex.Message})");
+                caught = ex;
                 throw;
             }
             finally
             {
                 started.Stop();
-                Console.WriteLine($"HTTP {context.Request.Method} {context.Request.Path}{context.Request.QueryString} -> {context.Response.StatusCode} {started.ElapsedMilliseconds}ms");
+                if (caught is null)
+                {
+                    Console.WriteLine($"HTTP {context.Request.Method} {context.Request.Path}{context.Request.QueryString} -> {context.Response.StatusCode} {started.ElapsedMilliseconds}ms");
+                }
+                else
+                {
+                    Console.Error.WriteLine($"HTTP {context.Request.Method} {context.Request.Path}{context.Request.QueryString} -> 500 {started.ElapsedMilliseconds}ms ({caught.GetType().Name}: {caught.Message})");
+                }
             }
         });
 
@@ -103,7 +122,8 @@ public sealed class MeshWebServer
         app.UseAuthorization();
 
         app.MapGet("/", () => Results.Redirect("/settings"));
-        app.MapGet("/favicon.ico", () => Results.NoContent());
+        app.MapGet("/favicon.svg", () => Results.Text(FaviconSvg, "image/svg+xml", Encoding.UTF8));
+        app.MapGet("/favicon.ico", () => Results.Redirect("/favicon.svg"));
         app.MapGet("/login", async (HttpContext context) =>
         {
             if (context.User?.Identity?.IsAuthenticated is true)
@@ -242,6 +262,7 @@ public sealed class MeshWebServer
         });
 
         Console.WriteLine($"MeshCore web management server starting on http://0.0.0.0:{_port}");
+        Console.WriteLine("MeshCore web middleware profile: accesslog-v2 favicon-svg dataprotection-local");
         await app.RunAsync(cancellationToken);
     }
 
@@ -480,6 +501,7 @@ public sealed class MeshWebServer
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>MeshCore Admin Login</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@500&display=swap');
 
@@ -684,6 +706,7 @@ public sealed class MeshWebServer
 <head>
     <meta charset="UTF-8" />
     <title>MeshCore Admin Console</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <style>
         body { font-family: Arial, sans-serif; margin: 1rem; background: #f6f8fa; color: #202124; }
         header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; }
