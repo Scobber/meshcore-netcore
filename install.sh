@@ -138,17 +138,21 @@ Alias=meshcore.service
 EOF
 
 sudo ln -sf "$SYSTEMD_DIR/$SERVICE_NAME" "$SYSTEMD_DIR/meshcore.service"
+echo "Created service alias symlink: $SYSTEMD_DIR/meshcore.service -> $SYSTEMD_DIR/$SERVICE_NAME"
+ls -l "$SYSTEMD_DIR/meshcore.service"
 
 sudo chown -R "$SERVICE_USER:$SERVICE_GROUP" "$DATA_DIR" "$CONFIG_DIR" "$LOG_DIR"
 
 sudo systemctl daemon-reload
 sudo systemctl enable "$SERVICE_NAME"
+echo "Service enable result: $(sudo systemctl is-enabled "$SERVICE_NAME" 2>/dev/null || echo unknown)"
 if ! sudo systemctl restart "$SERVICE_NAME"; then
   sudo systemctl --no-pager --full status "$SERVICE_NAME" || true
   sudo journalctl -u "$SERVICE_NAME" -n 80 --no-pager || true
   echo "Service restart failed during install." >&2
   exit 1
 fi
+echo "Service active result: $(sudo systemctl is-active "$SERVICE_NAME" 2>/dev/null || echo unknown)"
 
 echo "Installed MeshCore .NET"
 echo "Executable symlink: $BIN_DIR/$EXECUTABLE"

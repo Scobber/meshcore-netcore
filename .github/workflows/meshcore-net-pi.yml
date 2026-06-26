@@ -102,13 +102,17 @@ jobs:
           chown -R meshcore-netcore:meshcore-netcore /var/lib/meshcore /var/log/meshcore-netcore /etc/meshcore-netcore || true
           if command -v systemctl >/dev/null 2>&1; then
             ln -sf /lib/systemd/system/meshcore-netcore.service /etc/systemd/system/meshcore.service || true
+            echo "Created alias: /etc/systemd/system/meshcore.service -> /lib/systemd/system/meshcore-netcore.service"
+            ls -l /etc/systemd/system/meshcore.service || true
             systemctl daemon-reload
             systemctl enable meshcore-netcore.service
+            echo "Service enabled: $(systemctl is-enabled meshcore-netcore.service 2>/dev/null || echo unknown)"
             if ! systemctl restart meshcore-netcore.service; then
               systemctl --no-pager --full status meshcore-netcore.service || true
               journalctl -u meshcore-netcore.service -n 80 --no-pager || true
               exit 1
             fi
+            echo "Service active: $(systemctl is-active meshcore-netcore.service 2>/dev/null || echo unknown)"
           fi
           exit 0
           EOF
