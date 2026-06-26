@@ -27,14 +27,22 @@ internal static class GpioNativeCompat
 
     private static IntPtr ResolveLibgpiod(string libraryName, Assembly assembly, DllImportSearchPath? searchPath)
     {
-        if (!libraryName.Equals("libgpiod.so.2", StringComparison.Ordinal) &&
+        if (!libraryName.Equals("libgpiod.so.3", StringComparison.Ordinal) &&
+            !libraryName.Equals("libgpiod.so.2", StringComparison.Ordinal) &&
             !libraryName.Equals("libgpiod", StringComparison.Ordinal))
         {
             return IntPtr.Zero;
         }
 
-        // Support distros that ship libgpiod under different SONAME versions.
-        foreach (var candidate in new[] { "libgpiod.so.3", "libgpiod.so.2", "libgpiod.so.1", "libgpiod" })
+        // Keep ABI families separate so we do not load an incompatible SONAME.
+        string[] candidates = libraryName switch
+        {
+            "libgpiod.so.3" => ["libgpiod.so.3", "libgpiod"],
+            "libgpiod.so.2" => ["libgpiod.so.2", "libgpiod.so.1", "libgpiod"],
+            _ => ["libgpiod.so.3", "libgpiod.so.2", "libgpiod.so.1", "libgpiod"]
+        };
+
+        foreach (var candidate in candidates)
         {
             if (NativeLibrary.TryLoad(candidate, assembly, searchPath, out var handle))
             {

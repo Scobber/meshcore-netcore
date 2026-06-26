@@ -133,6 +133,12 @@ if ! id -u "$SERVICE_USER" >/dev/null 2>&1; then
   sudo useradd --system --no-create-home --home-dir "$DATA_DIR" --shell /usr/sbin/nologin -g "$SERVICE_GROUP" "$SERVICE_USER"
 fi
 
+for hw_group in gpio spi; do
+  if getent group "$hw_group" >/dev/null; then
+    sudo usermod -a -G "$hw_group" "$SERVICE_USER"
+  fi
+done
+
 sudo rm -rf "$DATA_DIR"/*
 sudo cp -r "$PUBLISH_DIR"/* "$DATA_DIR"
 sudo ln -sf "$DATA_DIR/$EXECUTABLE" "$BIN_DIR/$EXECUTABLE"

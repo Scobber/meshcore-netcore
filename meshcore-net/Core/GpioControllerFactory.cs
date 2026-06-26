@@ -9,17 +9,24 @@ internal static class GpioControllerFactory
     {
         try
         {
-            return new GpioController();
+            // Prefer libgpiod v2 (character device ABI) when available.
+            return new GpioController(new LibGpiodV2Driver(0));
         }
-        catch (EntryPointNotFoundException ex)
+        catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException or TypeLoadException)
         {
-            Console.WriteLine($"GPIO libgpiod ABI mismatch detected ({ex.Message}). Falling back to SysFs GPIO driver.");
-            return new GpioController(new SysFsDriver());
+            Console.WriteLine($"GPIO libgpiod v2 driver unavailable ({ex.Message}). Trying libgpiod v1 driver.");
         }
-        catch (DllNotFoundException ex) when (ex.Message.Contains("libgpiod", StringComparison.OrdinalIgnoreCase))
+
+        try
         {
-            Console.WriteLine($"GPIO libgpiod runtime not found ({ex.Message}). Falling back to SysFs GPIO driver.");
-            return new GpioController(new SysFsDriver());
+            // Fallback to libgpiod v1 driver before giving up.
+            return new GpioController(new LibGpiodDriver(0));
+        }
+        catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException or TypeLoadException)
+        {
+            throw new InvalidOperationException(
+                $"No compatible libgpiod GPIO driver is available ({ex.Message}). Install a compatible libgpiod runtime and ensure /dev/gpiochip* is accessible to the service account.",
+                ex);
         }
     }
 }
