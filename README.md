@@ -142,6 +142,8 @@ sudo ./install.sh
 For LoRa hardware mode, the host requires `libgpiod` userspace support.
 Package names vary by distro release (`libgpiod0/1/2/2t64/3` or `gpiod`), and `install.sh` now tries these variants automatically when available.
 
+The installed systemd services run as `root` by default so GPIO/SPI-backed drivers can access hardware directly. The installer does not create a dedicated `meshcore-netcore` service user.
+
 By default, `install.sh` installs:
 
 - runtime files: `/var/lib/meshcore`

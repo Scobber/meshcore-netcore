@@ -6,8 +6,8 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=meshcore-netcore
-Group=meshcore-netcore
+User=root
+Group=root
 ExecStart=/usr/local/bin/meshcore-repeater --service repeater /etc/meshcore-netcore/config.toml
 WorkingDirectory=/var/lib/meshcore
 Restart=always

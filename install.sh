@@ -18,8 +18,6 @@ WEB_SERVICE_NAME="meshcore-web.service"
 REPEATER_SERVICE_NAME="meshcore-repeater.service"
 COMPANION_SERVICE_NAME="meshcore-companion.service"
 LEGACY_SERVICE_NAME="meshcore-netcore.service"
-SERVICE_USER="meshcore-netcore"
-SERVICE_GROUP="meshcore-netcore"
 
 usage() {
   cat <<EOF
@@ -125,20 +123,6 @@ sudo mkdir -p "$BIN_DIR" "$CONFIG_DIR" "$DATA_DIR"
 sudo mkdir -p "$CREDENTIAL_DIR"
 sudo mkdir -p "$LOG_DIR"
 
-if ! getent group "$SERVICE_GROUP" >/dev/null; then
-  sudo groupadd --system "$SERVICE_GROUP"
-fi
-
-if ! id -u "$SERVICE_USER" >/dev/null 2>&1; then
-  sudo useradd --system --no-create-home --home-dir "$DATA_DIR" --shell /usr/sbin/nologin -g "$SERVICE_GROUP" "$SERVICE_USER"
-fi
-
-for hw_group in gpio spi; do
-  if getent group "$hw_group" >/dev/null; then
-    sudo usermod -a -G "$hw_group" "$SERVICE_USER"
-  fi
-done
-
 sudo rm -rf "$DATA_DIR"/*
 sudo cp -r "$PUBLISH_DIR"/* "$DATA_DIR"
 sudo ln -sf "$DATA_DIR/$EXECUTABLE" "$BIN_DIR/$EXECUTABLE"
@@ -188,23 +172,28 @@ if [ -L "$SYSTEMD_DIR/meshcore.service" ]; then
   sudo rm -f "$SYSTEMD_DIR/meshcore.service"
 fi
 
-sudo chown -R "$SERVICE_USER:$SERVICE_GROUP" "$DATA_DIR" "$LOG_DIR"
-sudo chown root:"$SERVICE_GROUP" "$CONFIG_DIR"
-sudo chmod 775 "$CONFIG_DIR"
-sudo chown root:"$SERVICE_GROUP" "$CREDENTIAL_DIR"
-sudo chmod 775 "$CREDENTIAL_DIR"
+sudo chown -R root:root "$DATA_DIR" "$LOG_DIR"
+sudo chmod 755 "$DATA_DIR" "$LOG_DIR"
+sudo chown root:root "$CONFIG_DIR"
+sudo chmod 755 "$CONFIG_DIR"
+sudo chown root:root "$CREDENTIAL_DIR"
+sudo chmod 700 "$CREDENTIAL_DIR"
 if [ -f "$CONFIG_DIR/config.toml" ]; then
-  sudo chown root:"$SERVICE_GROUP" "$CONFIG_DIR/config.toml"
-  sudo chmod 664 "$CONFIG_DIR/config.toml"
+  sudo chown root:root "$CONFIG_DIR/config.toml"
+  sudo chmod 644 "$CONFIG_DIR/config.toml"
 fi
 if [ -f "$CONFIG_DIR/readonly.toml" ]; then
-  sudo chown root:"$SERVICE_GROUP" "$CONFIG_DIR/readonly.toml"
-  sudo chmod 664 "$CONFIG_DIR/readonly.toml"
+  sudo chown root:root "$CONFIG_DIR/readonly.toml"
+  sudo chmod 644 "$CONFIG_DIR/readonly.toml"
 fi
 for credential in password private public; do
   if [ -f "$CREDENTIAL_DIR/$credential" ]; then
-    sudo chown root:"$SERVICE_GROUP" "$CREDENTIAL_DIR/$credential"
-    sudo chmod 664 "$CREDENTIAL_DIR/$credential"
+    sudo chown root:root "$CREDENTIAL_DIR/$credential"
+    if [ "$credential" = "public" ]; then
+      sudo chmod 644 "$CREDENTIAL_DIR/$credential"
+    else
+      sudo chmod 600 "$CREDENTIAL_DIR/$credential"
+    fi
   fi
 done
 
