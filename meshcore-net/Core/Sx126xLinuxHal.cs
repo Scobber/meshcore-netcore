@@ -48,7 +48,7 @@ public sealed class Sx126xLinuxHal : ISxRadioHal
             Mode = SpiMode.Mode0
         };
         _spi = SpiDevice.Create(settings);
-        _gpio = new GpioController();
+        _gpio = GpioControllerFactory.Create();
 
         OpenPin(_options.ResetPin, PinMode.Output);
         OpenPin(_options.BusyPin, PinMode.Input);

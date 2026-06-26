@@ -86,7 +86,7 @@ public sealed class ManagedSx127xRadio : ISxRadioHal
         };
 
         _spi = SpiDevice.Create(settings);
-        _gpio = new GpioController();
+        _gpio = GpioControllerFactory.Create();
 
         OpenPin(_options.ResetPin, PinMode.Output);
         OpenPin(_options.BusyPin, PinMode.Input);

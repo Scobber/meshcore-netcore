@@ -60,6 +60,17 @@ public class LinuxLoRaInterface : MeshInterfaceBase
             _hardwareReady = false;
             Console.WriteLine($"LoRa interface '{Name}' is running in degraded mode because libgpiod is unavailable: {ex.Message}");
         }
+        catch (EntryPointNotFoundException ex) when (ex.Message.Contains("libgpiod", StringComparison.OrdinalIgnoreCase))
+        {
+            if (_options.RequireHardware)
+            {
+                throw new InvalidOperationException(
+                    $"LoRa interface '{Name}' requires libgpiod ABI compatibility but it is unavailable: {ex.Message}", ex);
+            }
+
+            _hardwareReady = false;
+            Console.WriteLine($"LoRa interface '{Name}' is running in degraded mode because libgpiod ABI is incompatible: {ex.Message}");
+        }
         catch (TypeInitializationException ex) when (ex.InnerException is DllNotFoundException inner && inner.Message.Contains("libgpiod", StringComparison.OrdinalIgnoreCase))
         {
             if (_options.RequireHardware)
