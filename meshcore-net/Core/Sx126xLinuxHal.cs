@@ -164,13 +164,20 @@ public sealed class Sx126xLinuxHal : ISxRadioHal
             return;
         }
 
-        if (!_gpio.IsPinOpen(pin))
+        try
         {
-            _gpio.OpenPin(pin, mode);
+            if (!_gpio.IsPinOpen(pin))
+            {
+                _gpio.OpenPin(pin, mode);
+            }
+            else
+            {
+                _gpio.SetPinMode(pin, mode);
+            }
         }
-        else
+        catch (UnauthorizedAccessException ex)
         {
-            _gpio.SetPinMode(pin, mode);
+            throw new InvalidOperationException($"Unable to open GPIO pin {pin} - insufficient permissions. Please run with root privileges or use a GPIO driver that doesn't require elevated permissions.", ex);
         }
     }
 

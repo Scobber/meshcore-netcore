@@ -71,6 +71,17 @@ public class LinuxLoRaInterface : MeshInterfaceBase
             _hardwareReady = false;
             Console.WriteLine($"LoRa interface '{Name}' is running in degraded mode because libgpiod ABI is incompatible: {ex.Message}");
         }
+        catch (UnauthorizedAccessException ex) when (ex.Message.Contains("gpio", StringComparison.OrdinalIgnoreCase) || ex.Message.Contains("permission", StringComparison.OrdinalIgnoreCase))
+        {
+            if (_options.RequireHardware)
+            {
+                throw new InvalidOperationException(
+                    $"LoRa interface '{Name}' requires GPIO access but the service does not have sufficient permissions. Please run with appropriate privileges (root/sudo) or set require_hardware=false in configuration: {ex.Message}", ex);
+            }
+
+            _hardwareReady = false;
+            Console.WriteLine($"LoRa interface '{Name}' is running in degraded mode due to insufficient GPIO permissions: {ex.Message}");
+        }
         catch (TypeInitializationException ex) when (ex.InnerException is DllNotFoundException inner && inner.Message.Contains("libgpiod", StringComparison.OrdinalIgnoreCase))
         {
             if (_options.RequireHardware)
