@@ -10,6 +10,7 @@ public sealed class MeshHost
     private readonly Dictionary<string, object?> _config;
     private readonly string _configPath;
     private readonly HardwarePlatform _hardware = new();
+    private readonly List<SelfIdentity> _selfIdentities = [];
 
     public MeshHost(Dictionary<string, object?> config, string configPath)
     {
@@ -26,6 +27,10 @@ public sealed class MeshHost
         var dispatcher = new MeshDispatcher();
         var interfaces = BuildInterfaces();
         var devices = BuildDevices();
+        var gpsTracker = BuildGpsTrackingService();
+        var gpsTask = gpsTracker is null
+            ? Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken)
+            : gpsTracker.RunAsync(cancellationToken);
         // Internal delivery only makes sense when more than one device shares this process.
         dispatcher.PassInternal = GetBool(GetSection("dispatcher"), "pass_internal", false) && devices.Count > 1;
 
@@ -58,7 +63,7 @@ public sealed class MeshHost
 
         try
         {
-            await Task.WhenAny(webServerTask, Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken));
+            await Task.WhenAny(webServerTask, gpsTask, Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken));
             if (cancellationToken.IsCancellationRequested)
             {
                 Console.WriteLine("Shutdown requested.");
@@ -213,7 +218,39 @@ public sealed class MeshHost
         }
 
         Console.WriteLine($"{displayName}, public key: {Convert.ToHexString(privateKey.PublicKey).ToLowerInvariant()}");
-        return new SelfIdentity(privateKey, displayName, latLon, advertType);
+        var self = new SelfIdentity(privateKey, displayName, latLon, advertType);
+        _selfIdentities.Add(self);
+        return self;
+    }
+
+    private GpsTrackingService? BuildGpsTrackingService()
+    {
+        var section = GetSection("gps");
+        if (!GetBool(section, "enabled", false))
+        {
+            return null;
+        }
+
+        var mode = (GetString(section, "mode") ?? "average").Trim().ToLowerInvariant() switch
+        {
+            "roaming" or "mobile" => GpsTrackingMode.Roaming,
+            _ => GpsTrackingMode.Average
+        };
+
+        var configDirectory = Path.GetDirectoryName(_configPath) ?? Directory.GetCurrentDirectory();
+        var historyPath = GetString(section, "history_file") ?? Path.Combine(configDirectory, "gps-history.csv");
+        var statePath = GetString(section, "state_file") ?? Path.Combine(configDirectory, "gps-state.json");
+
+        var options = new GpsTrackingOptions(
+            SerialDevice: GetString(section, "device") ?? "/dev/serial0",
+            BaudRate: GetInt(section, "baud", 9600),
+            SampleIntervalSeconds: Math.Max(1, GetInt(section, "sample_interval_seconds", 60)),
+            RetentionDays: Math.Max(1, GetInt(section, "retention_days", 365)),
+            HistoryFilePath: historyPath,
+            StateFilePath: statePath,
+            Mode: mode);
+
+        return new GpsTrackingService(options, _selfIdentities);
     }
 
     private IdentityStore BuildIdentityStore(Dictionary<string, object?> section, MeshEd25519PrivateKey privateKey)

@@ -13,6 +13,27 @@ devices = ["companion"]
 [dispatcher]
 pass_internal = true
 
+[gps]
+# Enable onboard GPS ingest from NMEA serial and feed position into MeshCore identities.
+enabled = false
+
+# Position strategy:
+# - "average": fixed-point average over retained history
+# - "roaming": latest valid fix
+mode = "average"
+
+# Common Raspberry Pi serial GPS defaults
+device = "/dev/serial0"
+baud = 9600
+
+# Keep one-year round-robin history by time and sample interval
+sample_interval_seconds = 60
+retention_days = 365
+
+# Optional persisted files
+# history_file = "/var/lib/meshcore/gps-history.csv"
+# state_file = "/var/lib/meshcore/gps-state.json"
+
 # Interfaces
 
 # Waveshare LoRa HAT

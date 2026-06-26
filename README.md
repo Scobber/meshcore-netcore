@@ -246,6 +246,18 @@ The service executes:
 /usr/local/bin/meshcore-net /etc/meshcore-netcore/config.toml
 ```
 
+### GPS position modes
+
+The .NET host supports optional onboard GPS ingest via NMEA serial.
+
+Configure under `[gps]` in `config.toml`:
+
+- `enabled = true`
+- `mode = "average"` for fixed-point operation (year-retained rolling average)
+- `mode = "roaming"` for mobile operation (latest valid fix)
+
+In both modes, the resolved position is written into each local MeshCore device identity (`SelfIdentity.LatLon`) so it is available to the stack for adverts and messaging flows.
+
 ### Debian package
 
 The CI workflow now builds a `.deb` package for `linux-arm64`.
