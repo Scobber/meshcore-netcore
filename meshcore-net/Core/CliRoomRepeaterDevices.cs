@@ -48,14 +48,9 @@ public class CliMeshDevice : BasicMeshDevice
 
     public override Task RxAdvertAsync(MeshAdvertPacket packet, CancellationToken cancellationToken)
     {
-        // CLI devices track zero-hop repeater adverts as neighbours for status/CLI output.
-        if (packet.Advert.Type != MeshAdvertType.Repeater || packet.PathLength != 0)
-        {
-            return Task.CompletedTask;
-        }
-
         var identity = new MeshIdentity(packet.Advert, advertPath: packet.Path)
         {
+            Rssi = packet.Rssi,
             Snr = packet.Snr
         };
         NeighbourIdentities.AddIdentity(identity);
@@ -81,6 +76,7 @@ public class CliMeshDevice : BasicMeshDevice
             .Select(identity => new
             {
                 Age = (int)Math.Max(0, (DateTimeOffset.UtcNow - (identity is MeshIdentity mesh ? mesh.ReceivedAt : DateTimeOffset.UtcNow)).TotalSeconds),
+                Rssi = identity.Rssi,
                 Snr = (byte)((int)((identity.Snr ?? 0) * 4) & 0xff),
                 Key = identity.PublicKey[..4]
             })
@@ -94,7 +90,7 @@ public class CliMeshDevice : BasicMeshDevice
         }
 
         return string.Join('\n', neighbours.Select(item =>
-            $"{Convert.ToHexString(item.Key).ToLowerInvariant()}:{item.Age}:{item.Snr}"));
+            $"{Convert.ToHexString(item.Key).ToLowerInvariant()}:{item.Age}:{item.Rssi?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "0"}:{item.Snr}"));
     }
 
     public override async Task RxTextAsync(MeshTextPacket packet, CancellationToken cancellationToken)

@@ -3,11 +3,11 @@
 # This file is in TOML format
 # https://toml.io/en/
 
-# This sample config file just configures a fake interface
-interfaces = ["mock"]
+# This sample config starts in relay mode.
+interfaces = ["lora"]
 
-# And a single companion radio with a randomly-generated key
-devices = ["companion"]
+# A single repeater is the default device.
+devices = ["repeater"]
 
 
 [dispatcher]
@@ -38,6 +38,27 @@ retention_days = 365
 # state_file = "/var/lib/meshcore/gps-state.json"
 
 # Interfaces
+
+[interface.lora]
+type = "lora"
+
+# Common Pi SX126x defaults. Adjust to match your radio board.
+chip = "sx126x"
+
+# UK/EU default mesh channel.
+frequency = 869618000
+sf = 8
+bw = 62500
+cr = 8
+txpower = 22
+
+[device.repeater]
+type = "repeater"
+name = "Mesh Relay"
+
+# Relay defaults
+guest.open = true
+readonly = false
 
 # Waveshare LoRa HAT
 [interface.waveshare]

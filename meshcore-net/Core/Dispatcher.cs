@@ -14,6 +14,7 @@ public sealed class MeshDispatcher
     private readonly List<IMeshInterface> _interfaces = [];
     private readonly List<IMeshDevice> _devices = [];
     private readonly List<Task> _interfaceLoops = [];
+    private readonly List<PacketEvent> _packetEvents = [];
     private readonly object _sync = new();
     private CancellationTokenSource? _runCts;
     private Task? _loopTask;
@@ -98,6 +99,7 @@ public sealed class MeshDispatcher
             });
         }
 
+        RecordPacketEvent("queue", packet, queueLength: QueueLength, note: $"priority={priority} timeout={timeout}s");
         Console.WriteLine($"Mesh queue: enqueued type={packet.Type} priority={priority} timeout={timeout}s queue_length={QueueLength}.");
 
         return true;
@@ -249,6 +251,7 @@ public sealed class MeshDispatcher
         {
             // When multiple radios send the same packet, account the slowest airtime like Python.
             Interlocked.Exchange(ref _airtimeSeconds, _airtimeSeconds + transmitTimes.Max() / 1000d);
+            RecordPacketEvent("tx", next.Packet, note: $"interfaces={transmitTimes.Length} airtime_ms={transmitTimes.Max():F2}", queueLength: QueueLength);
             Console.WriteLine($"Mesh tx: type={next.Packet.Type} interfaces={transmitTimes.Length} max_airtime_ms={transmitTimes.Max():F2} queue_length={QueueLength}.");
         }
 
@@ -271,6 +274,7 @@ public sealed class MeshDispatcher
 
     private async Task DeliverFrameAsync(RadioFrame frame, CancellationToken cancellationToken)
     {
+        RecordPacketEvent("rx", frame.Packet, frame.Rssi, frame.Snr, frame.IsInternal, queueLength: QueueLength);
         Console.WriteLine($"Mesh rx: bytes={frame.Packet.Length} rssi={frame.Rssi} snr={frame.Snr} internal={frame.IsInternal}.");
         List<IMeshDevice> devices;
         lock (_sync)
@@ -299,6 +303,100 @@ public sealed class MeshDispatcher
 
         _lastStatsLogAt = now;
         Console.WriteLine($"Mesh stats: pending={pending} seen={seen} airtime_s={AirtimeSeconds:F3} interfaces={_interfaces.Count} devices={_devices.Count}.");
+        RecordSystemEvent("stats", pending, $"seen={seen} airtime_s={AirtimeSeconds:F3}");
+    }
+
+    public MeshDebugSnapshot GetDebugSnapshot(int maxPacketEvents = 64)
+    {
+        List<PacketEvent> packetEvents;
+        int pending;
+        int seen;
+        lock (_sync)
+        {
+            pending = _pending.Count;
+            seen = _seen.Count;
+            packetEvents = _packetEvents.TakeLast(Math.Max(1, maxPacketEvents)).ToList();
+        }
+
+        return new MeshDebugSnapshot(pending, seen, AirtimeSeconds, _interfaces.Count, _devices.Count, packetEvents);
+    }
+
+    private void RecordPacketEvent(string direction, MeshPacket packet, double rssi = 0, double snr = 0, bool internalFrame = false, int queueLength = 0, string? note = null)
+    {
+        lock (_sync)
+        {
+            _packetEvents.Add(new PacketEvent(
+                DateTimeOffset.UtcNow,
+                direction,
+                packet.Type.ToString(),
+                packet.ToWire().Length,
+                rssi,
+                snr,
+                internalFrame,
+                queueLength,
+                Convert.ToHexString(packet.ToWire()).ToLowerInvariant(),
+                note));
+
+            if (_packetEvents.Count > 128)
+            {
+                _packetEvents.RemoveRange(0, _packetEvents.Count - 128);
+            }
+        }
+    }
+
+    private void RecordPacketEvent(string direction, byte[] packetBytes, double rssi = 0, double snr = 0, bool internalFrame = false, int queueLength = 0, string? note = null)
+    {
+        var packetType = "raw";
+        try
+        {
+            packetType = MeshPacket.Parse(packetBytes).Type.ToString();
+        }
+        catch
+        {
+        }
+
+        lock (_sync)
+        {
+            _packetEvents.Add(new PacketEvent(
+                DateTimeOffset.UtcNow,
+                direction,
+                packetType,
+                packetBytes.Length,
+                rssi,
+                snr,
+                internalFrame,
+                queueLength,
+                Convert.ToHexString(packetBytes).ToLowerInvariant(),
+                note));
+
+            if (_packetEvents.Count > 128)
+            {
+                _packetEvents.RemoveRange(0, _packetEvents.Count - 128);
+            }
+        }
+    }
+
+    private void RecordSystemEvent(string direction, int queueLength, string? note = null)
+    {
+        lock (_sync)
+        {
+            _packetEvents.Add(new PacketEvent(
+                DateTimeOffset.UtcNow,
+                direction,
+                "stats",
+                0,
+                0,
+                0,
+                false,
+                queueLength,
+                string.Empty,
+                note));
+
+            if (_packetEvents.Count > 128)
+            {
+                _packetEvents.RemoveRange(0, _packetEvents.Count - 128);
+            }
+        }
     }
 
     public bool HasSeen(MeshPacket packet, Action<byte[], int>? duplicateCallback = null, byte[]? duplicateScope = null, bool checkOnly = false)
@@ -369,6 +467,26 @@ public sealed class MeshDispatcher
         public Action<byte[], int>? DuplicateCallback { get; set; }
     }
 }
+
+public sealed record PacketEvent(
+    DateTimeOffset At,
+    string Direction,
+    string Type,
+    int Bytes,
+    double Rssi,
+    double Snr,
+    bool Internal,
+    int QueueLength,
+    string Hex,
+    string? Note);
+
+public sealed record MeshDebugSnapshot(
+    int Pending,
+    int Seen,
+    double AirtimeSeconds,
+    int Interfaces,
+    int Devices,
+    IReadOnlyList<PacketEvent> Packets);
 
 public static class DispatchPriority
 {

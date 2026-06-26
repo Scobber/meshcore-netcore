@@ -12,7 +12,7 @@ internal static class Program
             Console.WriteLine($"Using configuration file: {configPath}");
 
             var config = SimpleTomlParser.ParseFile(configPath);
-            var host = new MeshHost(config);
+            var host = new MeshHost(config, configPath);
             await host.RunAsync(CancellationToken.None);
             return 0;
         }

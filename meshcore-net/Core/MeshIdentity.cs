@@ -106,6 +106,7 @@ public class MeshDestination
     public byte[] PublicKey { get; protected init; } = [];
     public bool IsAdmin { get; set; }
     public bool IsWriter { get; set; }
+    public double? Rssi { get; set; }
     public double? Snr { get; set; }
     public uint LastMessageTime { get; set; }
     public virtual string Name => "AnonReq: " + Convert.ToHexString(PublicKey).ToLowerInvariant();

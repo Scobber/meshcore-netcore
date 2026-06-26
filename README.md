@@ -313,9 +313,10 @@ devices = ["companion", "room"]
 The ``devices`` option selects which of the device profiles defined in the
 config file are in use.
 
-The default config file creates a single companion radio listening on
-port 5000, using the companion identity stored in
-`/etc/meshcore-netcore/private`.
+The default config file creates a single repeater by default on the
+generic LoRa path, and the relay dashboard shows the live nodes and
+packet stream it can see. The companion identity used by the host is
+stored in `/etc/meshcore-netcore/private`.
 
 If the key file does not exist, the host generates it during startup and
 records the resulting key path in the log file (which defaults to

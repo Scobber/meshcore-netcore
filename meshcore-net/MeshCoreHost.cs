@@ -12,6 +12,7 @@ public sealed class MeshHost
     private readonly string _configPath;
     private readonly HardwarePlatform _hardware = new();
     private readonly List<SelfIdentity> _selfIdentities = [];
+    private readonly List<CliMeshDevice> _relayVisibleDevices = [];
 
     public MeshHost(Dictionary<string, object?> config, string configPath)
     {
@@ -73,7 +74,12 @@ public sealed class MeshHost
             await device.StartAsync(cancellationToken, dispatcher);
         }
 
-        var webServer = new MeshWebServer(_config, _configPath);
+        var webServer = new MeshWebServer(
+            _config,
+            _configPath,
+            relaySnapshotProvider: () => BuildRelaySnapshot(dispatcher, interfaces, devices),
+            nodeSnapshotProvider: () => BuildNodeSnapshot(dispatcher, devices),
+            debugSnapshotProvider: () => dispatcher.GetDebugSnapshot());
         var webServerTask = webServer.StartAsync(cancellationToken);
 
         Console.WriteLine("MeshCore .NET host is running. Press Ctrl+C to stop.");
@@ -182,7 +188,9 @@ public sealed class MeshHost
     {
         var self = BuildSelfIdentity(section, displayName, MeshAdvertType.Room);
         var neighbours = BuildIdentityStore(section, self.PrivateKey);
-        return new RoomMeshDevice(self, new IdentityStore(), neighbours, _hardware, BuildAccessConfig(section));
+        var device = new RoomMeshDevice(self, new IdentityStore(), neighbours, _hardware, BuildAccessConfig(section));
+        _relayVisibleDevices.Add(device);
+        return device;
     }
 
     private IMeshDevice BuildCompanionDevice(Dictionary<string, object?> section, string displayName)
@@ -210,7 +218,9 @@ public sealed class MeshHost
     {
         var self = BuildSelfIdentity(section, displayName, MeshAdvertType.Repeater);
         var neighbours = BuildIdentityStore(section, self.PrivateKey);
-        return new RepeaterMeshDevice(self, neighbours, _hardware, BuildAccessConfig(section));
+        var device = new RepeaterMeshDevice(self, neighbours, _hardware, BuildAccessConfig(section));
+        _relayVisibleDevices.Add(device);
+        return device;
     }
 
     private SelfIdentity BuildSelfIdentity(Dictionary<string, object?> section, string displayName, MeshAdvertType advertType, bool useCredentialFile = false)
@@ -325,6 +335,89 @@ public sealed class MeshHost
     {
         var contacts = GetString(section, "contacts");
         return string.IsNullOrWhiteSpace(contacts) ? new IdentityStore() : new FileIdentityStore(contacts, privateKey);
+    }
+
+    private object BuildRelaySnapshot(MeshDispatcher dispatcher, IReadOnlyList<IMeshInterface> interfaces, IReadOnlyList<IMeshDevice> devices)
+    {
+        var visibleNodes = BuildVisibleNodesSnapshot();
+        return new
+        {
+            mode = GetStringList("devices") ?? [],
+            interfaces = interfaces.Select(meshInterface => new
+            {
+                name = meshInterface.Name,
+                type = meshInterface.Type,
+                radio = meshInterface.GetRadioConfig()
+            }),
+            devices = devices.Select(device => new
+            {
+                name = device.Name,
+                type = device.Type,
+                isRepeater = device is BasicMeshDevice basic && basic.IsRepeater,
+                publicKey = Convert.ToHexString((device as BasicMeshDevice)?.Self.PublicKey ?? []).ToLowerInvariant(),
+                stats = (device as BasicMeshDevice)?.Stats.OrderBy(pair => pair.Key).ToDictionary(pair => pair.Key, pair => pair.Value) ?? new Dictionary<string, long>()
+            }),
+            visibleNodes.Count,
+            nodes = visibleNodes,
+            queueLength = dispatcher.QueueLength,
+            airtimeSeconds = dispatcher.AirtimeSeconds
+        };
+    }
+
+    private object BuildNodeSnapshot(MeshDispatcher dispatcher, IReadOnlyList<IMeshDevice> devices)
+    {
+        var visibleNodes = BuildVisibleNodesSnapshot();
+        return new
+        {
+            count = visibleNodes.Count,
+            nodes = visibleNodes,
+            dispatcher = new
+            {
+                queueLength = dispatcher.QueueLength,
+                airtimeSeconds = dispatcher.AirtimeSeconds
+            }
+        };
+    }
+
+    private IReadOnlyList<object> BuildVisibleNodesSnapshot()
+    {
+        return _relayVisibleDevices
+            .SelectMany(device => device.NeighbourIdentities.GetAll().OfType<MeshIdentity>().Select(identity => new
+            {
+                key = Convert.ToHexString(identity.PublicKey).ToLowerInvariant(),
+                name = identity.Name,
+                device = device.Name,
+                type = identity.Advert.Type.ToString(),
+                ageSeconds = (int)Math.Max(0, (DateTimeOffset.UtcNow - identity.ReceivedAt).TotalSeconds),
+                rssi = identity.Rssi,
+                snr = identity.Snr,
+                pathLength = identity.Path?.Length ?? 0,
+                advertPathLength = identity.AdvertPath?.Length ?? 0,
+                latLon = identity.LatLon,
+                lastMessageTime = identity.LastMessageTime
+            }))
+            .GroupBy(item => item.key, StringComparer.OrdinalIgnoreCase)
+            .Select(group =>
+            {
+                var latest = group.OrderByDescending(item => item.ageSeconds).First();
+                return new
+                {
+                    latest.key,
+                    latest.name,
+                    latest.type,
+                    latest.device,
+                    latest.ageSeconds,
+                    latest.rssi,
+                    latest.snr,
+                    latest.pathLength,
+                    latest.advertPathLength,
+                    latest.latLon,
+                    latest.lastMessageTime,
+                    seenBy = group.Select(item => item.device).Distinct().OrderBy(item => item).ToArray()
+                };
+            })
+            .OrderByDescending(item => item.ageSeconds)
+            .ToArray<object>();
     }
 
     private DeviceAccessConfig BuildAccessConfig(Dictionary<string, object?> section)

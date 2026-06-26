@@ -20,11 +20,22 @@ public sealed class MeshWebServer
     private readonly Dictionary<string, object?> _config;
     private readonly string _configPath;
     private readonly int _port;
+    private readonly Func<object?>? _relaySnapshotProvider;
+    private readonly Func<object?>? _nodeSnapshotProvider;
+    private readonly Func<object?>? _debugSnapshotProvider;
 
-    public MeshWebServer(Dictionary<string, object?> config, string configPath)
+    public MeshWebServer(
+        Dictionary<string, object?> config,
+        string configPath,
+        Func<object?>? relaySnapshotProvider = null,
+        Func<object?>? nodeSnapshotProvider = null,
+        Func<object?>? debugSnapshotProvider = null)
     {
         _config = config;
         _configPath = configPath;
+        _relaySnapshotProvider = relaySnapshotProvider;
+        _nodeSnapshotProvider = nodeSnapshotProvider;
+        _debugSnapshotProvider = debugSnapshotProvider;
         _port = GetInt(GetSection("server", "web"), "port", 80);
     }
 
@@ -110,11 +121,17 @@ public sealed class MeshWebServer
 
         app.MapGet("/api/interfaces", [Authorize] () => Results.Json(GetSection("interface") ?? new Dictionary<string, object?>()));
         app.MapGet("/api/devices", [Authorize] () => Results.Json(GetSection("device") ?? new Dictionary<string, object?>()));
-        app.MapGet("/api/nodes", [Authorize] () => Results.Json(GetSection("device") ?? new Dictionary<string, object?>()));
+        app.MapGet("/api/nodes", [Authorize] () => Results.Json(_nodeSnapshotProvider?.Invoke() ?? new { count = 0, nodes = Array.Empty<object>() }));
         app.MapGet("/api/node/{name}", [Authorize] (string name) =>
         {
-            var section = GetSection("device", name);
-            return section is null ? Results.NotFound(new { error = "Node not found" }) : Results.Json(section);
+            var snapshot = _nodeSnapshotProvider?.Invoke();
+            if (snapshot is null)
+            {
+                var section = GetSection("device", name);
+                return section is null ? Results.NotFound(new { error = "Node not found" }) : Results.Json(section);
+            }
+
+            return Results.Json(snapshot);
         });
         app.MapPost("/api/node/{name}", [Authorize] async (string name, HttpContext context) =>
         {
@@ -152,13 +169,30 @@ public sealed class MeshWebServer
             return Results.Ok(new { removed = name });
         });
 
-        app.MapGet("/api/relay", [Authorize] () => Results.Json(new
+        app.MapGet("/api/relay", [Authorize] () => Results.Json(_relaySnapshotProvider?.Invoke() ?? new
         {
             server = GetSection("server"),
             dispatcher = GetSection("dispatcher"),
             devices = GetSection("device"),
             interfaces = GetSection("interface")
         }));
+
+        app.MapGet("/api/debug", [Authorize] () => Results.Json(_debugSnapshotProvider?.Invoke() ?? new
+        {
+            dispatcher = GetSection("dispatcher"),
+            packets = Array.Empty<object>()
+        }));
+
+        app.MapGet("/api/diagnostics", [Authorize] () => Results.Json(new
+        {
+            generatedAt = DateTimeOffset.UtcNow,
+            version = VersionInfo.AppVersion,
+            configPath = _configPath,
+            config = _config,
+            relay = _relaySnapshotProvider?.Invoke(),
+            nodes = _nodeSnapshotProvider?.Invoke(),
+            debug = _debugSnapshotProvider?.Invoke()
+        }, new JsonSerializerOptions { WriteIndented = true }));
 
         app.MapPost("/api/reload", [Authorize] () => Results.Json(new { reloaded = false, message = "Reload is not supported without restarting the host." }));
 
@@ -445,6 +479,10 @@ public sealed class MeshWebServer
         button { margin-right: 0.5rem; }
         .hidden { display: none; }
         .card { padding: 1rem; background: #fff; border: 1px solid #e1e4e8; border-radius: 8px; margin-bottom: 1rem; }
+        .summary { margin: 0.25rem 0 0.75rem 0; color: #586069; font-size: 0.95rem; }
+        .health-stale { background: #fff5f5; }
+        .health-weak { background: #fffbe6; }
+        .health-strong { background: #f6ffed; }
     </style>
 </head>
 <body>
@@ -455,32 +493,42 @@ public sealed class MeshWebServer
         </div>
         <div>
             <a href="/logout">Logout</a>
+            <button id="export-diagnostics">Export diagnostics</button>
         </div>
     </header>
 
     <nav>
-        <a href="#" id="tab-status" class="active">Status</a>
+        <a href="#" id="tab-relay" class="active">Relay</a>
         <a href="#" id="tab-nodes">Nodes</a>
         <a href="#" id="tab-interfaces">Interfaces</a>
         <a href="#" id="tab-config">Config</a>
-        <a href="#" id="tab-relay">Relay</a>
+        <a href="#" id="tab-debug">Debug</a>
     </nav>
 
-    <section id="view-status" class="card">
-        <h2>Server status</h2>
-        <pre id="status-json">Loading...</pre>
+    <section id="view-relay" class="card">
+        <h2>Relay overview</h2>
+        <div>
+            <button id="refresh-relay">Refresh relay</button>
+        </div>
+        <div id="relay-summary" class="summary">Loading...</div>
+        <table>
+            <thead><tr><th>Name</th><th>Type</th><th>RSSI</th><th>SNR</th><th>Age</th><th>Seen By</th></tr></thead>
+            <tbody id="relay-table"></tbody>
+        </table>
+        <pre id="relay-json">Loading...</pre>
     </section>
 
     <section id="view-nodes" class="card hidden">
-        <h2>Nodes</h2>
+        <h2>Seen nodes</h2>
         <div>
             <button id="refresh-nodes">Refresh nodes</button>
         </div>
+        <div id="node-summary" class="summary">Loading...</div>
         <table>
-            <thead><tr><th>Name</th><th>Type</th><th>Actions</th></tr></thead>
+            <thead><tr><th>Name</th><th>Device</th><th>RSSI</th><th>SNR</th><th>Age</th><th>Last Msg</th><th>Seen By</th></tr></thead>
             <tbody id="nodes-table"></tbody>
         </table>
-        <pre id="node-detail" class="hidden"></pre>
+        <pre id="node-json">Loading...</pre>
     </section>
 
     <section id="view-interfaces" class="card hidden">
@@ -497,27 +545,35 @@ public sealed class MeshWebServer
         <textarea id="editor"></textarea>
     </section>
 
-    <section id="view-relay" class="card hidden">
-        <h2>Relay & Login</h2>
-        <pre id="relay-json">Loading...</pre>
+    <section id="view-debug" class="card hidden">
+        <h2>Debug packet stream</h2>
+        <div>
+            <button id="refresh-debug">Refresh debug</button>
+        </div>
+        <div id="debug-summary" class="summary">Loading...</div>
+        <pre id="debug-json">Loading...</pre>
+        <table>
+            <thead><tr><th>Time</th><th>Dir</th><th>Type</th><th>Bytes</th><th>RSSI</th><th>SNR</th><th>Internal</th><th>Queue</th><th>Note</th></tr></thead>
+            <tbody id="packet-table"></tbody>
+        </table>
     </section>
 """ + FooterHtml() + """
 
     <script>
         const views = {
-            status: document.getElementById('view-status'),
+            relay: document.getElementById('view-relay'),
             nodes: document.getElementById('view-nodes'),
             interfaces: document.getElementById('view-interfaces'),
             config: document.getElementById('view-config'),
-            relay: document.getElementById('view-relay')
+            debug: document.getElementById('view-debug')
         };
 
         const tabs = {
-            status: document.getElementById('tab-status'),
+            relay: document.getElementById('tab-relay'),
             nodes: document.getElementById('tab-nodes'),
             interfaces: document.getElementById('tab-interfaces'),
             config: document.getElementById('tab-config'),
-            relay: document.getElementById('tab-relay')
+            debug: document.getElementById('tab-debug')
         };
 
         Object.entries(tabs).forEach(([name, tab]) => {
@@ -532,12 +588,38 @@ public sealed class MeshWebServer
             views[name].classList.remove('hidden');
             Object.values(tabs).forEach(tab => tab.classList.remove('active'));
             tabs[name].classList.add('active');
+            refreshVisibleView(name);
         }
 
-        async function loadStatus() {
-            const response = await fetch('/api/status');
-            const json = await response.json();
-            document.getElementById('status-json').textContent = JSON.stringify(json, null, 2);
+        function formatMaybe(value, fallback = '0') {
+            return value === null || value === undefined ? fallback : value;
+        }
+
+        function healthClass(node) {
+            const age = Number(node.ageSeconds ?? 0);
+            const rssi = Number(node.rssi ?? -9999);
+            const snr = Number(node.snr ?? -9999);
+            if (age > 120) {
+                return 'health-stale';
+            }
+
+            if (rssi < -110 || snr < 3) {
+                return 'health-weak';
+            }
+
+            return 'health-strong';
+        }
+
+        function sortByStrength(a, b) {
+            const aAge = a.ageSeconds ?? Number.MAX_SAFE_INTEGER;
+            const bAge = b.ageSeconds ?? Number.MAX_SAFE_INTEGER;
+            if (aAge !== bAge) {
+                return aAge - bAge;
+            }
+
+            const aSignal = Number(a.rssi ?? -9999) + Number(a.snr ?? -9999);
+            const bSignal = Number(b.rssi ?? -9999) + Number(b.snr ?? -9999);
+            return bSignal - aSignal;
         }
 
         async function loadInterfaces() {
@@ -549,27 +631,59 @@ public sealed class MeshWebServer
         async function loadRelay() {
             const response = await fetch('/api/relay');
             const json = await response.json();
+            const nodes = [...(json.nodes ?? [])].sort(sortByStrength);
+            document.getElementById('relay-summary').textContent = `nodes=${nodes.length} queue=${json.queueLength ?? 0} airtime_s=${Number(json.airtimeSeconds ?? 0).toFixed(3)}`;
             document.getElementById('relay-json').textContent = JSON.stringify(json, null, 2);
+            document.getElementById('relay-table').innerHTML = nodes.map(node => `
+                <tr class="${healthClass(node)}">
+                    <td>${node.name ?? node.key}</td>
+                    <td>${node.type ?? 'unknown'}</td>
+                    <td>${formatMaybe(node.rssi, '-')}</td>
+                    <td>${formatMaybe(node.snr, '-')}</td>
+                    <td>${node.ageSeconds ?? 0}s</td>
+                    <td>${(node.seenBy ?? []).join(', ')}</td>
+                </tr>`).join('');
         }
 
         async function loadNodes() {
             const response = await fetch('/api/nodes');
-            const nodes = await response.json();
-            const rows = Object.entries(nodes).map(([name, node]) => {
-                const type = node?.type ?? 'unknown';
-                return `<tr><td>${name}</td><td>${type}</td><td><button data-node="${name}">Detail</button></td></tr>`;
-            }).join('');
-            document.getElementById('nodes-table').innerHTML = rows;
-            document.querySelectorAll('[data-node]').forEach(button => {
-                button.addEventListener('click', async () => {
-                    const name = button.getAttribute('data-node');
-                    const response = await fetch(`/api/node/${name}`);
-                    const detail = await response.json();
-                    const detailPre = document.getElementById('node-detail');
-                    detailPre.textContent = JSON.stringify(detail, null, 2);
-                    detailPre.classList.remove('hidden');
-                });
-            });
+            const json = await response.json();
+            const nodes = [...(json.nodes ?? [])].sort(sortByStrength);
+            document.getElementById('node-summary').textContent = `nodes=${nodes.length} dispatcher_queue=${json.dispatcher?.queueLength ?? 0}`;
+            document.getElementById('node-json').textContent = JSON.stringify(json, null, 2);
+            document.getElementById('nodes-table').innerHTML = nodes.map(node => `
+                <tr class="${healthClass(node)}">
+                    <td>${node.name ?? node.key}</td>
+                    <td>${node.device ?? '-'}</td>
+                    <td>${formatMaybe(node.rssi, '-')}</td>
+                    <td>${formatMaybe(node.snr, '-')}</td>
+                    <td>${node.ageSeconds ?? 0}s</td>
+                    <td>${node.lastMessageTime ?? 0}</td>
+                    <td>${(node.seenBy ?? []).join(', ')}</td>
+                </tr>`).join('');
+        }
+
+        async function loadDebug() {
+            const response = await fetch('/api/debug');
+            const json = await response.json();
+            const packets = json.packets ?? [];
+            document.getElementById('debug-summary').textContent = `packets=${packets.length} queue=${json.dispatcher?.queueLength ?? 0}`;
+            document.getElementById('debug-json').textContent = JSON.stringify({
+                dispatcher: json.dispatcher,
+                packetCount: packets.length
+            }, null, 2);
+            document.getElementById('packet-table').innerHTML = packets.map(packet => `
+                <tr>
+                    <td>${packet.at ?? ''}</td>
+                    <td>${packet.direction ?? ''}</td>
+                    <td>${packet.type ?? ''}</td>
+                    <td>${packet.bytes ?? 0}</td>
+                    <td>${packet.rssi ?? 0}</td>
+                    <td>${packet.snr ?? 0}</td>
+                    <td>${packet.internal ? 'yes' : 'no'}</td>
+                    <td>${packet.queueLength ?? 0}</td>
+                    <td>${packet.note ?? ''}</td>
+                </tr>`).join('');
         }
 
         async function loadConfig() {
@@ -600,14 +714,52 @@ public sealed class MeshWebServer
             }
         }
 
+        document.getElementById('refresh-relay').addEventListener('click', loadRelay);
         document.getElementById('refresh-nodes').addEventListener('click', loadNodes);
+        document.getElementById('refresh-debug').addEventListener('click', loadDebug);
         document.getElementById('reload').addEventListener('click', loadConfig);
         document.getElementById('save').addEventListener('click', saveConfig);
+        document.getElementById('export-diagnostics').addEventListener('click', async () => {
+            const response = await fetch('/api/diagnostics');
+            if (!response.ok) {
+                alert('Unable to export diagnostics.');
+                return;
+            }
 
-        loadStatus();
+            const blob = await response.blob();
+            const url = URL.createObjectURL(blob);
+            const anchor = document.createElement('a');
+            anchor.href = url;
+            anchor.download = `meshcore-diagnostics-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+            document.body.appendChild(anchor);
+            anchor.click();
+            anchor.remove();
+            URL.revokeObjectURL(url);
+        });
+
+        async function refreshVisibleView(name) {
+            if (name === 'relay') {
+                await loadRelay();
+            } else if (name === 'nodes') {
+                await loadNodes();
+            } else if (name === 'debug') {
+                await loadDebug();
+            }
+        }
+
+        setInterval(() => {
+            if (document.hidden) {
+                return;
+            }
+
+            const active = Object.entries(tabs).find(([, tab]) => tab.classList.contains('active'))?.[0] ?? 'relay';
+            refreshVisibleView(active);
+        }, 5000);
+
         loadInterfaces();
         loadRelay();
         loadNodes();
+        loadDebug();
         loadConfig();
     </script>
 </body>
