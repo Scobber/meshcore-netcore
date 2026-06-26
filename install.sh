@@ -130,7 +130,12 @@ sudo chown -R "$SERVICE_USER:$SERVICE_GROUP" "$DATA_DIR" "$CONFIG_DIR"
 
 sudo systemctl daemon-reload
 sudo systemctl enable "$SERVICE_NAME"
-sudo systemctl restart "$SERVICE_NAME"
+if ! sudo systemctl restart "$SERVICE_NAME"; then
+  sudo systemctl --no-pager --full status "$SERVICE_NAME" || true
+  sudo journalctl -u "$SERVICE_NAME" -n 80 --no-pager || true
+  echo "Service restart failed during install." >&2
+  exit 1
+fi
 
 echo "Installed MeshCore .NET"
 echo "Executable symlink: $BIN_DIR/$EXECUTABLE"
@@ -138,3 +143,4 @@ echo "Data directory: $DATA_DIR"
 echo "Config directory: $CONFIG_DIR"
 echo "Service file: $SYSTEMD_DIR/$SERVICE_NAME"
 echo "Service enabled and restarted: $SERVICE_NAME"
+sudo systemctl --no-pager --full status "$SERVICE_NAME" | sed -n '1,20p'

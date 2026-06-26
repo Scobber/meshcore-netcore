@@ -101,9 +101,13 @@ jobs:
           fi
           chown -R meshcore-netcore:meshcore-netcore /var/lib/meshcore /etc/meshcore-netcore || true
           if command -v systemctl >/dev/null 2>&1; then
-            systemctl daemon-reload || true
-            systemctl enable meshcore-netcore.service || true
-            systemctl restart meshcore-netcore.service || true
+            systemctl daemon-reload
+            systemctl enable meshcore-netcore.service
+            if ! systemctl restart meshcore-netcore.service; then
+              systemctl --no-pager --full status meshcore-netcore.service || true
+              journalctl -u meshcore-netcore.service -n 80 --no-pager || true
+              exit 1
+            fi
           fi
           exit 0
           EOF
