@@ -19,6 +19,7 @@ public sealed class MeshDispatcher
     private Task? _loopTask;
     private long _sequence;
     private double _airtimeSeconds;
+    private DateTimeOffset _lastStatsLogAt = DateTimeOffset.MinValue;
 
     public bool PassInternal { get; set; }
     public TimeSpan SeenPacketLifetime { get; set; } = TimeSpan.FromSeconds(60);
@@ -97,6 +98,8 @@ public sealed class MeshDispatcher
             });
         }
 
+        Console.WriteLine($"Mesh queue: enqueued type={packet.Type} priority={priority} timeout={timeout}s queue_length={QueueLength}.");
+
         return true;
     }
 
@@ -110,6 +113,7 @@ public sealed class MeshDispatcher
         // Use a linked CTS that StopAsync can cancel; this was the root of the earlier xUnit hang.
         _runCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         _loopTask = Task.Run(() => DispatchLoopAsync(_runCts.Token), CancellationToken.None);
+        Console.WriteLine($"Mesh dispatcher started: interfaces={_interfaces.Count}, devices={_devices.Count}, pass_internal={PassInternal}.");
         lock (_sync)
         {
             foreach (var meshInterface in _interfaces)
@@ -154,6 +158,7 @@ public sealed class MeshDispatcher
         {
             DispatchExpiredEntries();
             CleanSeenTable();
+            MaybeLogStats();
 
             DispatchEntry? next;
             lock (_sync)
@@ -244,6 +249,7 @@ public sealed class MeshDispatcher
         {
             // When multiple radios send the same packet, account the slowest airtime like Python.
             Interlocked.Exchange(ref _airtimeSeconds, _airtimeSeconds + transmitTimes.Max() / 1000d);
+            Console.WriteLine($"Mesh tx: type={next.Packet.Type} interfaces={transmitTimes.Length} max_airtime_ms={transmitTimes.Max():F2} queue_length={QueueLength}.");
         }
 
         if (PassInternal && next.Packet.PathLength == 0)
@@ -265,6 +271,7 @@ public sealed class MeshDispatcher
 
     private async Task DeliverFrameAsync(RadioFrame frame, CancellationToken cancellationToken)
     {
+        Console.WriteLine($"Mesh rx: bytes={frame.Packet.Length} rssi={frame.Rssi} snr={frame.Snr} internal={frame.IsInternal}.");
         List<IMeshDevice> devices;
         lock (_sync)
         {
@@ -272,6 +279,26 @@ public sealed class MeshDispatcher
         }
 
         await Task.WhenAll(devices.Select(device => device.HandleFrameAsync(frame, cancellationToken))).ConfigureAwait(false);
+    }
+
+    private void MaybeLogStats()
+    {
+        var now = DateTimeOffset.UtcNow;
+        if (_lastStatsLogAt != DateTimeOffset.MinValue && now - _lastStatsLogAt < TimeSpan.FromSeconds(30))
+        {
+            return;
+        }
+
+        int pending;
+        int seen;
+        lock (_sync)
+        {
+            pending = _pending.Count;
+            seen = _seen.Count;
+        }
+
+        _lastStatsLogAt = now;
+        Console.WriteLine($"Mesh stats: pending={pending} seen={seen} airtime_s={AirtimeSeconds:F3} interfaces={_interfaces.Count} devices={_devices.Count}.");
     }
 
     public bool HasSeen(MeshPacket packet, Action<byte[], int>? duplicateCallback = null, byte[]? duplicateScope = null, bool checkOnly = false)

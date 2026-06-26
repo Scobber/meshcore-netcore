@@ -27,6 +27,22 @@ public sealed class MeshHost
         var dispatcher = new MeshDispatcher();
         var interfaces = BuildInterfaces();
         var devices = BuildDevices();
+        Console.WriteLine($"Mesh service topology: interfaces={interfaces.Count} devices={devices.Count}");
+        foreach (var meshInterface in interfaces)
+        {
+            Console.WriteLine($"Mesh interface active: {meshInterface.Name} ({meshInterface.Type})");
+        }
+
+        foreach (var device in devices)
+        {
+            Console.WriteLine($"Mesh device active: {device.Name} ({device.Type})");
+        }
+
+        if (interfaces.Count > 0 && interfaces.All(meshInterface => meshInterface.Type.Equals("mock", StringComparison.OrdinalIgnoreCase)))
+        {
+            Console.WriteLine("Mesh warning: only mock interfaces are configured; no over-the-air mesh traffic will be received or transmitted.");
+        }
+
         var gpsTracker = BuildGpsTrackingService();
         var gpsTask = gpsTracker is null
             ? Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken)
