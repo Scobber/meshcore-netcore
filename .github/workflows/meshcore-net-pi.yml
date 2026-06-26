@@ -111,7 +111,33 @@ jobs:
           fi
           exit 0
           EOF
+
+          cat > package/DEBIAN/preinst <<'EOF'
+          #!/bin/sh
+          set -e
+          if command -v systemctl >/dev/null 2>&1; then
+            systemctl stop meshcore-netcore.service >/dev/null 2>&1 || true
+          fi
+          exit 0
+          EOF
+
+          cat > package/DEBIAN/prerm <<'EOF'
+          #!/bin/sh
+          set -e
+          if command -v systemctl >/dev/null 2>&1; then
+            systemctl stop meshcore-netcore.service >/dev/null 2>&1 || true
+            case "$1" in
+              remove|purge|deconfigure)
+                systemctl disable meshcore-netcore.service >/dev/null 2>&1 || true
+                ;;
+            esac
+          fi
+          exit 0
+          EOF
+
           chmod 755 package/DEBIAN/postinst
+          chmod 755 package/DEBIAN/preinst
+          chmod 755 package/DEBIAN/prerm
           fakeroot dpkg-deb --build package "publish/linux-arm64/meshcore-netcore_${VERSION}_arm64.deb"
 
       - name: Upload build artifact

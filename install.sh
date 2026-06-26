@@ -66,6 +66,10 @@ if [ ! -d "$PUBLISH_DIR" ]; then
   exit 1
 fi
 
+if systemctl list-unit-files | grep -q "^$SERVICE_NAME"; then
+  sudo systemctl stop "$SERVICE_NAME" >/dev/null 2>&1 || true
+fi
+
 sudo mkdir -p "$BIN_DIR" "$CONFIG_DIR" "$DATA_DIR"
 
 if ! getent group "$SERVICE_GROUP" >/dev/null; then
@@ -76,6 +80,7 @@ if ! id -u "$SERVICE_USER" >/dev/null 2>&1; then
   sudo useradd --system --no-create-home --home-dir "$DATA_DIR" --shell /usr/sbin/nologin -g "$SERVICE_GROUP" "$SERVICE_USER"
 fi
 
+sudo rm -rf "$DATA_DIR"/*
 sudo cp -r "$PUBLISH_DIR"/* "$DATA_DIR"
 sudo ln -sf "$DATA_DIR/$EXECUTABLE" "$BIN_DIR/$EXECUTABLE"
 
