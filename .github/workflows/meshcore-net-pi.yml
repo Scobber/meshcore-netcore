@@ -99,33 +99,31 @@ jobs:
           cat > package/DEBIAN/postinst <<'EOF'
           #!/bin/sh
           set -e
-          if ! getent group meshcore-netcore >/dev/null 2>&1; then
-            groupadd --system meshcore-netcore || true
-          fi
-          if ! id -u meshcore-netcore >/dev/null 2>&1; then
-            useradd --system --no-create-home --home-dir /var/lib/meshcore --shell /usr/sbin/nologin -g meshcore-netcore meshcore-netcore || true
-          fi
-          chown -R meshcore-netcore:meshcore-netcore /var/lib/meshcore /var/log/meshcore-netcore || true
-          chown root:meshcore-netcore /etc/meshcore-netcore || true
-          chmod 775 /etc/meshcore-netcore || true
           mkdir -p /etc/meshcore-netcore
-          chown root:meshcore-netcore /etc/meshcore-netcore || true
-          chmod 775 /etc/meshcore-netcore || true
+          mkdir -p /var/lib/meshcore /var/log/meshcore-netcore
+          chown -R root:root /var/lib/meshcore /var/log/meshcore-netcore || true
+          chmod 755 /var/lib/meshcore /var/log/meshcore-netcore || true
+          chown root:root /etc/meshcore-netcore || true
+          chmod 755 /etc/meshcore-netcore || true
           if [ -f /etc/meshcore-netcore/config.toml ]; then
-            chown root:meshcore-netcore /etc/meshcore-netcore/config.toml || true
-            chmod 664 /etc/meshcore-netcore/config.toml || true
+            chown root:root /etc/meshcore-netcore/config.toml || true
+            chmod 644 /etc/meshcore-netcore/config.toml || true
           fi
           if [ -f /etc/meshcore-netcore/readonly.toml ]; then
-            chown root:meshcore-netcore /etc/meshcore-netcore/readonly.toml || true
-            chmod 664 /etc/meshcore-netcore/readonly.toml || true
+            chown root:root /etc/meshcore-netcore/readonly.toml || true
+            chmod 644 /etc/meshcore-netcore/readonly.toml || true
           fi
           if [ ! -s /etc/meshcore-netcore/password ] || [ ! -s /etc/meshcore-netcore/private ] || [ ! -s /etc/meshcore-netcore/public ]; then
             /var/lib/meshcore/meshcore-net --generate-admin-keys /etc/meshcore-netcore || true
           fi
           for credential in password private public; do
             if [ -f /etc/meshcore-netcore/$credential ]; then
-              chown root:meshcore-netcore /etc/meshcore-netcore/$credential || true
-              chmod 664 /etc/meshcore-netcore/$credential || true
+              chown root:root /etc/meshcore-netcore/$credential || true
+              if [ "$credential" = "public" ]; then
+                chmod 644 /etc/meshcore-netcore/$credential || true
+              else
+                chmod 600 /etc/meshcore-netcore/$credential || true
+              fi
             fi
           done
           if command -v systemctl >/dev/null 2>&1; then
@@ -133,6 +131,7 @@ jobs:
             rm -f /etc/systemd/system/meshcore.service || true
             systemctl daemon-reload
             for service in meshcore-web.service meshcore-repeater.service meshcore-companion.service; do
+              systemctl unmask "$service" >/dev/null 2>&1 || true
               systemctl enable "$service"
               echo "Service enabled [$service]: $(systemctl is-enabled "$service" 2>/dev/null || echo unknown)"
               if ! systemctl restart "$service"; then

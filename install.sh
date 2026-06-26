@@ -105,56 +105,6 @@ ensure_libgpiod() {
   fi
 }
 
-toml_list_contains() {
-  local file_path="$1"
-  local list_key="$2"
-  local wanted="$3"
-
-  if [[ ! -f "$file_path" ]]; then
-    return 1
-  fi
-
-  awk -v key="$list_key" -v needle="$wanted" '
-    BEGIN {
-      in_list = 0
-      found = 0
-    }
-    {
-      line = $0
-      sub(/#.*/, "", line)
-
-      if (!in_list) {
-        if (line ~ "^[[:space:]]*" key "[[:space:]]*=") {
-          in_list = 1
-          sub(/^[^=]*=/, "", line)
-        } else {
-          next
-        }
-      }
-
-      if (in_list) {
-        end_of_list = index(line, "]") > 0
-        gsub(/[[:space:]]/, "", line)
-        gsub(/[\[\]"]/, "", line)
-
-        count = split(line, items, ",")
-        for (i = 1; i <= count; i++) {
-          if (items[i] == needle) {
-            found = 1
-          }
-        }
-
-        if (end_of_list) {
-          in_list = 0
-        }
-      }
-    }
-    END {
-      exit(found ? 0 : 1)
-    }
-  ' "$file_path"
-}
-
 if [ ! -d "$PUBLISH_DIR" ]; then
   echo "Publish directory does not exist: $PUBLISH_DIR"
   echo "Run ./build.sh --publish first."
@@ -250,23 +200,7 @@ done
 sudo systemctl daemon-reload
 sudo systemctl disable "$LEGACY_SERVICE_NAME" >/dev/null 2>&1 || true
 
-ACTIVE_SERVICES=("$WEB_SERVICE_NAME")
-
-if toml_list_contains "$CONFIG_DIR/config.toml" "devices" "repeater"; then
-  ACTIVE_SERVICES+=("$REPEATER_SERVICE_NAME")
-else
-  sudo systemctl disable "$REPEATER_SERVICE_NAME" >/dev/null 2>&1 || true
-  sudo systemctl stop "$REPEATER_SERVICE_NAME" >/dev/null 2>&1 || true
-fi
-
-if toml_list_contains "$CONFIG_DIR/config.toml" "devices" "companion"; then
-  ACTIVE_SERVICES+=("$COMPANION_SERVICE_NAME")
-else
-  sudo systemctl disable "$COMPANION_SERVICE_NAME" >/dev/null 2>&1 || true
-  sudo systemctl stop "$COMPANION_SERVICE_NAME" >/dev/null 2>&1 || true
-fi
-
-for service in "${ACTIVE_SERVICES[@]}"; do
+for service in "$WEB_SERVICE_NAME" "$REPEATER_SERVICE_NAME" "$COMPANION_SERVICE_NAME"; do
   sudo systemctl enable "$service"
   echo "Service enable result [$service]: $(sudo systemctl is-enabled "$service" 2>/dev/null || echo unknown)"
   if ! sudo systemctl restart "$service"; then
@@ -289,14 +223,7 @@ echo "Credential directory: $CREDENTIAL_DIR"
 echo "Service file: $SYSTEMD_DIR/$WEB_SERVICE_NAME"
 echo "Service file: $SYSTEMD_DIR/$REPEATER_SERVICE_NAME"
 echo "Service file: $SYSTEMD_DIR/$COMPANION_SERVICE_NAME"
-for service in "${ACTIVE_SERVICES[@]}"; do
+for service in "$WEB_SERVICE_NAME" "$REPEATER_SERVICE_NAME" "$COMPANION_SERVICE_NAME"; do
   echo "Service enabled and restarted: $service"
   sudo systemctl --no-pager --full status "$service" | sed -n '1,20p'
-done
-
-for service in "$REPEATER_SERVICE_NAME" "$COMPANION_SERVICE_NAME"; do
-  enabled="$(sudo systemctl is-enabled "$service" 2>/dev/null || echo disabled)"
-  if [[ "$enabled" != "enabled" ]]; then
-    echo "Service not enabled by current config: $service"
-  fi
 done
