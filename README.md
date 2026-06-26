@@ -226,12 +226,19 @@ By default, `install.sh` installs:
 - runtime files: `/var/lib/meshcore`
 - executable symlink: `/usr/local/bin/meshcore-net`
 - configuration directory: `/etc/meshcore-netcore`
+- credential directory: `/etc/metcore-netcore`
 - systemd unit: `/etc/systemd/system/meshcore-netcore.service`
 
 It also copies default config files from the repository into `/etc/meshcore-netcore` if they are not already present:
 
 - `config.toml`
 - `readonly.toml`
+
+Admin credentials are stored separately under `/etc/metcore-netcore`:
+
+- `public`
+- `private`
+- `password`
 
 Enable and start the service with:
 
@@ -307,11 +314,12 @@ The ``devices`` option selects which of the device profiles defined in the
 config file are in use.
 
 The default config file creates a single companion radio listening on
-port 5000, with a randomly-created private key.
+port 5000, using the companion identity stored in
+`/etc/metcore-netcore/private`.
 
-You can use a private key from the MeshCore app. If you want to use the
-randomly-generated key again, it will be displayed at startup and recorded
-in the log file (which defaults to 'meshcore.log')
+If the key file does not exist, the host generates it during startup and
+records the resulting key path in the log file (which defaults to
+`meshcore.log`).
 
 You can connect the companion radio app on your phone to this using the
 experimental "connect via WiFi" feature. Alternatively, to use the

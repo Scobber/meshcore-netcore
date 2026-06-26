@@ -5,6 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 PUBLISH_DIR="${SCRIPT_DIR}/publish/linux-arm64"
 BIN_DIR="/usr/local/bin"
 CONFIG_DIR="/etc/meshcore-netcore"
+CREDENTIAL_DIR="/etc/metcore-netcore"
 DATA_DIR="/var/lib/meshcore"
 LOG_DIR="/var/log/meshcore-netcore"
 SYSTEMD_DIR="/etc/systemd/system"
@@ -20,6 +21,7 @@ Usage: ${0##*/} [options]
 Options:
   -b, --bin-dir <path>        Binary install directory (default: /usr/local/bin)
   -c, --config-dir <path>     Configuration directory (default: /etc/meshcore-netcore)
+  -C, --credential-dir <path> Credential directory (default: /etc/metcore-netcore)
   -d, --data-dir <path>       Data/binary directory (default: /var/lib/meshcore)
   -p, --publish-dir <path>    Publish artifacts directory (default: publish/linux-arm64)
   -h, --help                  Show this help message
@@ -27,7 +29,7 @@ Options:
 Examples:
   ./install.sh
   ./install.sh --publish-dir /tmp/publish/linux-arm64
-  ./install.sh --config-dir /etc/meshcore-netcore --data-dir /var/lib/meshcore
+  ./install.sh --config-dir /etc/meshcore-netcore --credential-dir /etc/metcore-netcore --data-dir /var/lib/meshcore
 EOF
 }
 
@@ -39,6 +41,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     -c|--config-dir)
       CONFIG_DIR="${2:-}"
+      shift 2
+      ;;
+    -C|--credential-dir)
+      CREDENTIAL_DIR="${2:-}"
       shift 2
       ;;
     -d|--data-dir)
@@ -72,6 +78,7 @@ if systemctl list-unit-files | grep -q "^$SERVICE_NAME"; then
 fi
 
 sudo mkdir -p "$BIN_DIR" "$CONFIG_DIR" "$DATA_DIR"
+sudo mkdir -p "$CREDENTIAL_DIR"
 sudo mkdir -p "$LOG_DIR"
 
 if ! getent group "$SERVICE_GROUP" >/dev/null; then
@@ -99,6 +106,14 @@ fi
 if [ ! -f "$CONFIG_DIR/readonly.toml" ] && [ -f "$SCRIPT_DIR/readonly.toml" ]; then
   sudo cp "$SCRIPT_DIR/readonly.toml" "$CONFIG_DIR/readonly.toml"
   echo "Default readonly config copied to $CONFIG_DIR/readonly.toml"
+fi
+
+if [ ! -f "$CREDENTIAL_DIR/password" ]; then
+  sudo touch "$CREDENTIAL_DIR/password"
+fi
+
+if [ ! -f "$CREDENTIAL_DIR/private" ] || [ ! -f "$CREDENTIAL_DIR/public" ] || [ ! -s "$CREDENTIAL_DIR/password" ]; then
+  sudo "$DATA_DIR/$EXECUTABLE" --generate-admin-keys "$CREDENTIAL_DIR"
 fi
 
 sudo tee "$SYSTEMD_DIR/$SERVICE_NAME" >/dev/null <<'EOF'
@@ -130,7 +145,7 @@ ProtectHome=yes
 NoNewPrivileges=yes
 AmbientCapabilities=CAP_NET_BIND_SERVICE
 CapabilityBoundingSet=CAP_NET_BIND_SERVICE
-ReadWritePaths=/etc/meshcore-netcore /var/lib/meshcore /var/log/meshcore-netcore
+ReadWritePaths=/etc/meshcore-netcore /etc/metcore-netcore /var/lib/meshcore /var/log/meshcore-netcore
 
 [Install]
 WantedBy=multi-user.target
@@ -144,6 +159,8 @@ ls -l "$SYSTEMD_DIR/meshcore.service"
 sudo chown -R "$SERVICE_USER:$SERVICE_GROUP" "$DATA_DIR" "$LOG_DIR"
 sudo chown root:"$SERVICE_GROUP" "$CONFIG_DIR"
 sudo chmod 775 "$CONFIG_DIR"
+sudo chown root:"$SERVICE_GROUP" "$CREDENTIAL_DIR"
+sudo chmod 775 "$CREDENTIAL_DIR"
 if [ -f "$CONFIG_DIR/config.toml" ]; then
   sudo chown root:"$SERVICE_GROUP" "$CONFIG_DIR/config.toml"
   sudo chmod 664 "$CONFIG_DIR/config.toml"
@@ -152,6 +169,12 @@ if [ -f "$CONFIG_DIR/readonly.toml" ]; then
   sudo chown root:"$SERVICE_GROUP" "$CONFIG_DIR/readonly.toml"
   sudo chmod 664 "$CONFIG_DIR/readonly.toml"
 fi
+for credential in password private public; do
+  if [ -f "$CREDENTIAL_DIR/$credential" ]; then
+    sudo chown root:"$SERVICE_GROUP" "$CREDENTIAL_DIR/$credential"
+    sudo chmod 664 "$CREDENTIAL_DIR/$credential"
+  fi
+done
 
 sudo systemctl daemon-reload
 sudo systemctl enable "$SERVICE_NAME"
@@ -168,6 +191,7 @@ echo "Installed MeshCore .NET"
 echo "Executable symlink: $BIN_DIR/$EXECUTABLE"
 echo "Data directory: $DATA_DIR"
 echo "Config directory: $CONFIG_DIR"
+echo "Credential directory: $CREDENTIAL_DIR"
 echo "Service file: $SYSTEMD_DIR/$SERVICE_NAME"
 echo "Service enabled and restarted: $SERVICE_NAME"
 sudo systemctl --no-pager --full status "$SERVICE_NAME" | sed -n '1,20p'

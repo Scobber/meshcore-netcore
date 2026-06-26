@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Security.Cryptography;
 using System.Security.Claims;
 using System.Text;
 using System.Text.Json;
@@ -15,6 +16,7 @@ namespace MeshCoreNet;
 
 public sealed class MeshWebServer
 {
+    private const string CredentialDirectoryPath = "/etc/metcore-netcore";
     private readonly Dictionary<string, object?> _config;
     private readonly string _configPath;
     private readonly int _port;
@@ -28,6 +30,8 @@ public sealed class MeshWebServer
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
+        EnsureAdminCredentialFiles();
+
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.ConfigureKestrel(options =>
         {
@@ -70,7 +74,7 @@ public sealed class MeshWebServer
             await context.Response.WriteAsync(LoginPageHtml());
         });
 
-        app.MapPost("/login", async (HttpContext context) => await LoginHandler(context));
+        app.MapPost("/login", (Delegate)LoginHandler);
         app.MapGet("/logout", async (HttpContext context) =>
         {
             await context.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
@@ -162,11 +166,13 @@ public sealed class MeshWebServer
         {
             var server = GetSection("server") ?? new Dictionary<string, object?>();
             var loginSection = GetSection("server", "admin");
+            var filePassword = ReadCredentialFile("password");
+            var filePublic = ReadCredentialFile("public");
             return Results.Json(new
             {
                 server,
                 appVersion = VersionInfo.AppVersion,
-                adminEnabled = loginSection is not null || GetString(server, "admin.password") is not null || GetString(server, "admin.keys") is not null
+                adminEnabled = loginSection is not null || GetString(server, "admin.password") is not null || GetString(server, "admin.keys") is not null || !string.IsNullOrWhiteSpace(filePassword) || !string.IsNullOrWhiteSpace(filePublic)
             });
         });
 
@@ -215,12 +221,8 @@ public sealed class MeshWebServer
     private bool IsAdminLogin(LoginRequest request)
     {
         var serverSection = GetSection("server");
-        if (serverSection is null)
-        {
-            return false;
-        }
-
-        var adminPassword = GetString(serverSection, "admin.password");
+        var adminPassword = serverSection is null ? null : GetString(serverSection, "admin.password");
+        adminPassword ??= ReadCredentialFile("password");
         if (!string.IsNullOrWhiteSpace(request.Password) && request.Password == adminPassword)
         {
             return true;
@@ -228,7 +230,14 @@ public sealed class MeshWebServer
 
         if (!string.IsNullOrWhiteSpace(request.PublicKey))
         {
-            var adminKeys = GetStringSet(serverSection, "admin.keys", "admin.pubkeys");
+            var adminKeys = serverSection is null
+                ? new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+                : GetStringSet(serverSection, "admin.keys", "admin.pubkeys");
+            var filePublic = ReadCredentialFile("public");
+            if (!string.IsNullOrWhiteSpace(filePublic))
+            {
+                adminKeys.Add(filePublic);
+            }
             if (adminKeys.Contains(request.PublicKey, StringComparer.OrdinalIgnoreCase))
             {
                 return true;
@@ -265,6 +274,55 @@ public sealed class MeshWebServer
         }
 
         return value.ToString();
+    }
+
+    private string CredentialDirectory => CredentialDirectoryPath;
+
+    private string ReadCredentialPath(string name) => Path.Combine(CredentialDirectory, name);
+
+    private string? ReadCredentialFile(string name)
+    {
+        var path = ReadCredentialPath(name);
+        if (!File.Exists(path))
+        {
+            return null;
+        }
+
+        var value = File.ReadAllText(path).Trim();
+        return value.Length == 0 ? null : value;
+    }
+
+    private void EnsureAdminCredentialFiles()
+    {
+        try
+        {
+            Directory.CreateDirectory(CredentialDirectory);
+            var passwordPath = ReadCredentialPath("password");
+            var publicPath = ReadCredentialPath("public");
+            var privatePath = ReadCredentialPath("private");
+
+            if (!File.Exists(passwordPath) || string.IsNullOrWhiteSpace(File.ReadAllText(passwordPath)))
+            {
+                var passwordBytes = RandomNumberGenerator.GetBytes(24);
+                var password = Convert.ToBase64String(passwordBytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+                File.WriteAllText(passwordPath, password + Environment.NewLine);
+                Console.WriteLine($"Generated admin password file: {passwordPath}");
+            }
+
+            if (!File.Exists(privatePath) || string.IsNullOrWhiteSpace(File.ReadAllText(privatePath)) || !File.Exists(publicPath) || string.IsNullOrWhiteSpace(File.ReadAllText(publicPath)))
+            {
+                var key = new MeshEd25519PrivateKey();
+                var privateHex = Convert.ToHexString(key.PrivateKey).ToLowerInvariant();
+                var publicHex = Convert.ToHexString(key.PublicKey).ToLowerInvariant();
+                File.WriteAllText(privatePath, privateHex + Environment.NewLine);
+                File.WriteAllText(publicPath, publicHex + Environment.NewLine);
+                Console.WriteLine($"Generated admin key files: {publicPath}, {privatePath}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Unable to initialize admin credential files in {CredentialDirectory}: {ex.Message}");
+        }
     }
 
     private void SetSection(string sectionName, string key, Dictionary<string, object?> section)

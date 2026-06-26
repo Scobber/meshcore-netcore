@@ -7,6 +7,7 @@ namespace MeshCoreNet;
 /// </summary>
 public sealed class MeshHost
 {
+    private const string CredentialDirectoryPath = "/etc/metcore-netcore";
     private readonly Dictionary<string, object?> _config;
     private readonly string _configPath;
     private readonly HardwarePlatform _hardware = new();
@@ -186,7 +187,7 @@ public sealed class MeshHost
 
     private IMeshDevice BuildCompanionDevice(Dictionary<string, object?> section, string displayName)
     {
-        var self = BuildSelfIdentity(section, displayName, MeshAdvertType.Chat);
+        var self = BuildSelfIdentity(section, displayName, MeshAdvertType.Chat, useCredentialFile: true);
         var identities = BuildIdentityStore(section, self.PrivateKey);
         var maxChannels = GetInt(section, "channels", 32);
         var channelFile = GetString(section, "channelfile");
@@ -212,19 +213,26 @@ public sealed class MeshHost
         return new RepeaterMeshDevice(self, neighbours, _hardware, BuildAccessConfig(section));
     }
 
-    private SelfIdentity BuildSelfIdentity(Dictionary<string, object?> section, string displayName, MeshAdvertType advertType)
+    private SelfIdentity BuildSelfIdentity(Dictionary<string, object?> section, string displayName, MeshAdvertType advertType, bool useCredentialFile = false)
     {
         MeshEd25519PrivateKey privateKey;
-        var configuredKey = GetString(section, "privatekey");
-        if (!string.IsNullOrWhiteSpace(configuredKey))
+        if (useCredentialFile)
         {
-            privateKey = new MeshEd25519PrivateKey(Convert.FromHexString(configuredKey));
+            privateKey = LoadCredentialPrivateKey("private", fallbackSection: section);
         }
         else
         {
-            privateKey = new MeshEd25519PrivateKey();
-            // Match Python by printing newly generated private keys so operators can copy them into config.
-            Console.WriteLine($"Created private key: {Convert.ToHexString(privateKey.PrivateKey).ToLowerInvariant()}");
+            var configuredKey = GetString(section, "privatekey");
+            if (!string.IsNullOrWhiteSpace(configuredKey))
+            {
+                privateKey = new MeshEd25519PrivateKey(Convert.FromHexString(configuredKey));
+            }
+            else
+            {
+                privateKey = new MeshEd25519PrivateKey();
+                // Match Python by printing newly generated private keys so operators can copy them into config.
+                Console.WriteLine($"Created private key: {Convert.ToHexString(privateKey.PrivateKey).ToLowerInvariant()}");
+            }
         }
 
         (double Latitude, double Longitude)? latLon = null;
@@ -237,6 +245,36 @@ public sealed class MeshHost
         var self = new SelfIdentity(privateKey, displayName, latLon, advertType);
         _selfIdentities.Add(self);
         return self;
+    }
+
+    private MeshEd25519PrivateKey LoadCredentialPrivateKey(string name, Dictionary<string, object?>? fallbackSection = null)
+    {
+        var credentialPath = CredentialPath(name);
+        var storedKey = ReadCredentialFile(name);
+        if (!string.IsNullOrWhiteSpace(storedKey))
+        {
+            try
+            {
+                Console.WriteLine($"Loaded companion private key from {credentialPath}");
+                return new MeshEd25519PrivateKey(Convert.FromHexString(storedKey));
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Warning: credential key in {credentialPath} is invalid: {ex.Message}");
+            }
+        }
+
+        var configuredKey = fallbackSection is null ? null : GetString(fallbackSection, "privatekey");
+        if (!string.IsNullOrWhiteSpace(configuredKey))
+        {
+            return new MeshEd25519PrivateKey(Convert.FromHexString(configuredKey));
+        }
+
+        Directory.CreateDirectory(CredentialDirectoryPath);
+        var generatedKey = new MeshEd25519PrivateKey();
+        File.WriteAllText(credentialPath, Convert.ToHexString(generatedKey.PrivateKey).ToLowerInvariant() + Environment.NewLine);
+        Console.WriteLine($"Generated companion private key: {credentialPath}");
+        return generatedKey;
     }
 
     private GpsTrackingService? BuildGpsTrackingService()
@@ -267,6 +305,20 @@ public sealed class MeshHost
             Mode: mode);
 
         return new GpsTrackingService(options, _selfIdentities);
+    }
+
+    private string CredentialPath(string name) => Path.Combine(CredentialDirectoryPath, name);
+
+    private string? ReadCredentialFile(string name)
+    {
+        var path = CredentialPath(name);
+        if (!File.Exists(path))
+        {
+            return null;
+        }
+
+        var value = File.ReadAllText(path).Trim();
+        return value.Length == 0 ? null : value;
     }
 
     private IdentityStore BuildIdentityStore(Dictionary<string, object?> section, MeshEd25519PrivateKey privateKey)

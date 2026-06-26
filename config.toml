@@ -95,10 +95,8 @@ device = "mon0"
 # Default name is "Companion ########" (8 bytes of public key)
 # name = "New companion radio"
 
-# Default is to create a new private/public key
-# Both 32-byte (64 hex characters) and 64-byte (128 hex characters)
-# private keys are supported
-# privatekey="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+# The companion radio identity key is loaded from /etc/metcore-netcore/private.
+# That file is created during install and reused on startup.
 
 # Default is no latitude/longitude
 # lat = 0
