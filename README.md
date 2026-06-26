@@ -272,6 +272,38 @@ The .NET host supports optional onboard GPS ingest via NMEA serial.
 
 Configure under `[gps]` in `config.toml`:
 
+### LoRa prebuilt regional profiles
+
+LoRa interfaces now support prebuilt global regional profiles with the `profile` key.
+You can still override profile values with explicit `frequency`, `sf`, `bw`, `cr`, and `txpower` fields.
+
+Example:
+
+```toml
+[interface.lora]
+type = "lora"
+profile = "au915-narrow"
+chip = "sx126x"
+```
+
+Australia profiles:
+
+- `au915-narrow`
+- `au915-wide`
+
+Other common regional profiles:
+
+- `eu868-narrow`, `eu868-wide`
+- `eu433-narrow`, `eu433-wide`
+- `us915-narrow`, `us915-wide`
+- `as923-narrow`, `as923-wide`
+- `in865-narrow`, `in865-wide`
+- `kr920-narrow`, `kr920-wide`
+- `ru864-narrow`, `ru864-wide`
+- `cn470-narrow`, `cn470-wide`
+- `cn779-narrow`, `cn779-wide`
+- `jp920-narrow`, `jp920-wide`
+
 - `enabled = true`
 - `mode = "average"` for fixed-point operation (year-retained rolling average)
 - `mode = "roaming"` for mobile operation (latest valid fix)

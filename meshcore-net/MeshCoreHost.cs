@@ -469,17 +469,9 @@ public sealed class MeshHost
 
     private LoRaOptions BuildLoRaOptions(Dictionary<string, object?>? section)
     {
-        var configuredFrequency = GetInt(section, "frequency", -1);
-        if (configuredFrequency < 0)
-        {
-            configuredFrequency = GetString(section, "region")?.ToLowerInvariant() switch
-            {
-                "433" => 433_000_000,
-                "915" => 915_000_000,
-                "868" => 868_000_000,
-                _ => 869_618_000
-            };
-        }
+        var profileKey = GetString(section, "profile") ?? GetString(section, "region") ?? GetString(section, "band");
+        var profile = LoRaProfile.ResolveOrDefault(profileKey);
+        var configuredFrequency = GetInt(section, "frequency", (int)profile.Frequency);
 
         return new LoRaOptions(
             SpiBus: GetInt(section, "spi", 0),
@@ -491,10 +483,10 @@ public sealed class MeshHost
             RxEnablePin: GetInt(section, "rxen", -1),
             WakePin: GetInt(section, "wake", -1),
             Frequency: (uint)configuredFrequency,
-            SpreadingFactor: (byte)GetInt(section, "sf", 8),
-            Bandwidth: (uint)GetInt(section, "bw", 62_500),
-            CodingRate: (byte)GetInt(section, "cr", 8),
-            TxPower: (sbyte)GetInt(section, "txpower", 22),
+            SpreadingFactor: (byte)GetInt(section, "sf", profile.SpreadingFactor),
+            Bandwidth: (uint)GetInt(section, "bw", (int)profile.Bandwidth),
+            CodingRate: (byte)GetInt(section, "cr", profile.CodingRate),
+            TxPower: (sbyte)GetInt(section, "txpower", profile.TxPower),
             AirtimeDutyCycle: GetDouble(section, "airtime", 10),
             Dio2RfSwitch: GetBool(section, "dio2.rfswitch", false),
             Dio3Voltage: TryGetDouble(section, "dio3.voltage", out var voltage) ? voltage : null,

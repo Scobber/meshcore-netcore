@@ -41,16 +41,22 @@ retention_days = 365
 
 [interface.lora]
 type = "lora"
+profile = "eu868-narrow"
 
 # Common Pi SX126x defaults. Adjust to match your radio board.
 chip = "sx126x"
 
 # UK/EU default mesh channel.
-frequency = 869618000
-sf = 8
-bw = 62500
-cr = 8
-txpower = 22
+# Explicit values can still override profile defaults when needed.
+# frequency = 869618000
+# sf = 8
+# bw = 62500
+# cr = 8
+# txpower = 22
+
+# Australia profile examples:
+# profile = "au915-narrow"
+# profile = "au915-wide"
 
 [device.repeater]
 type = "repeater"
