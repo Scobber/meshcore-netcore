@@ -63,31 +63,31 @@ jobs:
           cp readonly.toml package/etc/meshcore-netcore/readonly.toml
           cp meshcore-netcore.service package/lib/systemd/system/meshcore-netcore.service
           cat > package/DEBIAN/control <<EOF
-Package: meshcore-netcore
-Version: ${VERSION}
-Section: utils
-Priority: optional
-Architecture: arm64
-Depends: dotnet-runtime-10.0
-Maintainer: MeshCore <meshcore@example.com>
-Description: MeshCore .NET core host and management server
- A Linux .NET host for MeshCore with companion and relay configuration support.
-EOF
+          Package: meshcore-netcore
+          Version: ${VERSION}
+          Section: utils
+          Priority: optional
+          Architecture: arm64
+          Depends: dotnet-runtime-10.0
+          Maintainer: MeshCore <meshcore@example.com>
+          Description: MeshCore .NET core host and management server
+           A Linux .NET host for MeshCore with companion and relay configuration support.
+          EOF
           cat > package/DEBIAN/postinst <<'EOF'
-#!/bin/sh
-set -e
-if ! getent group meshcore-netcore >/dev/null 2>&1; then
-  groupadd --system meshcore-netcore || true
-fi
-if ! id -u meshcore-netcore >/dev/null 2>&1; then
-  useradd --system --no-create-home --home-dir /var/lib/meshcore --shell /usr/sbin/nologin -g meshcore-netcore meshcore-netcore || true
-fi
-chown -R meshcore-netcore:meshcore-netcore /var/lib/meshcore /etc/meshcore-netcore || true
-if command -v systemctl >/dev/null 2>&1; then
-  systemctl daemon-reload || true
-fi
-exit 0
-EOF
+          #!/bin/sh
+          set -e
+          if ! getent group meshcore-netcore >/dev/null 2>&1; then
+            groupadd --system meshcore-netcore || true
+          fi
+          if ! id -u meshcore-netcore >/dev/null 2>&1; then
+            useradd --system --no-create-home --home-dir /var/lib/meshcore --shell /usr/sbin/nologin -g meshcore-netcore meshcore-netcore || true
+          fi
+          chown -R meshcore-netcore:meshcore-netcore /var/lib/meshcore /etc/meshcore-netcore || true
+          if command -v systemctl >/dev/null 2>&1; then
+            systemctl daemon-reload || true
+          fi
+          exit 0
+          EOF
           chmod 755 package/DEBIAN/postinst
           fakeroot dpkg-deb --build package "publish/linux-arm64/meshcore-netcore_${VERSION}_arm64.deb"
 
