@@ -143,6 +143,8 @@ For LoRa hardware mode, the host requires `libgpiod` userspace support.
 Package names vary by distro release (`libgpiod0/1/2/2t64/3` or `gpiod`), and `install.sh` now tries these variants automatically when available.
 
 The installed systemd services run as `root` by default so GPIO/SPI-backed drivers can access hardware directly. The installer does not create a dedicated `meshcore-netcore` service user.
+Service enablement now follows `devices` in `config.toml`: web is always enabled, repeater is enabled only when `devices` includes `repeater`, and companion is enabled only when `devices` includes `companion`.
+This avoids multiple split services contending for the same LoRa GPIO/SPI interface when only one mesh device mode is configured.
 
 By default, `install.sh` installs:
 
@@ -171,8 +173,15 @@ Admin credentials are stored separately under `/etc/meshcore-netcore`:
 Enable and start the services with:
 
 ```bash
-sudo systemctl enable meshcore-web meshcore-repeater meshcore-companion
-sudo systemctl start meshcore-web meshcore-repeater meshcore-companion
+sudo systemctl enable meshcore-web meshcore-repeater
+sudo systemctl start meshcore-web meshcore-repeater
+```
+
+If you also configure `devices = ["companion"]`, then enable the companion service as well:
+
+```bash
+sudo systemctl enable meshcore-companion
+sudo systemctl start meshcore-companion
 ```
 
 The services execute:

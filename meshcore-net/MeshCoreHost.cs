@@ -43,8 +43,17 @@ public sealed class MeshHost
         }
 
         var dispatcher = new MeshDispatcher();
-        var interfaces = BuildInterfaces();
         var devices = BuildDevices(mode);
+        List<IMeshInterface> interfaces;
+        if (mode != HostServiceMode.All && devices.Count == 0)
+        {
+            Console.WriteLine($"No devices matched service mode '{mode.ToString().ToLowerInvariant()}'; skipping mesh interface startup to avoid resource contention.");
+            interfaces = [];
+        }
+        else
+        {
+            interfaces = BuildInterfaces();
+        }
         Console.WriteLine($"Mesh service topology: interfaces={interfaces.Count} devices={devices.Count}");
         foreach (var meshInterface in interfaces)
         {
