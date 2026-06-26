@@ -1,0 +1,464 @@
+Implementing Meshcore in python
+===============================
+
+What this is
+------------
+
+This an implementation of the MeshCore protocol in Python, intended to
+run on a Raspberry Pi or other Linux device. It can make use of SX1262
+interfaces such as the Waveshare LoRa HAT or an HT-RA62 connected to SPI
+and GPIO.
+
+For experimenting, it can use an existing companion radio (such as a Heltec)
+running MeshCore as a receive-only radio interface, or (if you modify it
+slightly) as a transmitter too.
+
+It is able to be a companion radio (which can connect to the MeshCore app
+over WiFi or serial), a room server or a repeater, or several of these at
+once. As it can be configured with multiple interfaces, it is capable of
+repeating/bridging between available transports.
+
+Get started
+-----------
+
+You will need:
+* python 3.11 minimum, 3.12 is better
+* Some external modules
+
+It is recommended to create a virtual environment for this:
+
+```
+$ python -m venv venv
+$ . ./venv/bin/activate
+```
+
+Then install the following:
+
+* pycryptodome - cyptographic functions
+* aiotools - asyncio utilities
+* pyserial_asyncio - serial modules
+* typing-extensions - seems to be needed for recent aiotools
+
+If you have an SX1262 board, you'll need:
+* LoRaRF - SX1262 driver
+
+```
+$ pip install pycryptodome aiotools pyserial_asyncio typing-extensions
+$ pip install LoRaRF
+```
+
+### Using LoRa interfaces
+
+The LoRaRF library assumes you're running on a Raspberry Pi. There is
+configuration for a Waveshare LoRa/GNSS HAT in the example config, as
+well as a HT-RA62 wired as follows:
+
+| HT-RA62 pin | GPIO |
+|-------------|------|
+| Reset       | 22   |
+| Busy        | 23   |
+| DIO1        | 26   |
+| MOSI        | 10   |
+| MISO        | 9    |
+| SCK         | 11   |
+| NSS         | 8    |
+
+Other pins (TXEN, RXEN, DIO2, DIO3) are not connected
+
+The LoRaRF library installs RPi.GPIO for GPIO access. Unfortunately, if
+you're running newer versions of Raspberry Pi OS (eg, Bookworm), you'll
+need to replace it with lgpio
+
+```
+$ pip uninstall rpi.gpio
+$ pip install rpi-lgpio
+```
+
+### Serial interfaces
+
+In order to connect a MeshCore app running in a browser to the companion
+radio device, a virtual null modem is required
+
+https://github.com/freemed/tty0tty
+
+Then, if the meshcore-pi companion device is listening on /dev/tnt0,
+the browser app can connect to /dev/tnt1
+
+
+### Using an existing companion radio
+
+As part of the companion radio interface, the radio will send a copy of
+every received packet to the application. This is how the "number of
+repeats heard" and Discover list functions work. We can make use of this
+to use a companion radio as a receive-only interface.
+
+With a small modification, the companion radio firmware can be augmented
+with an extra command (CMD_SEND_RAW_PACKET), which accepts a packet and
+sends it on our behalf.
+
+To do this, you'll need to clone the MeshCore repository, and apply the
+patch in meshcore.patch, before building and installing it on your
+radio.
+
+```
+$ git clone https://github.com/meshcore-dev/MeshCore.git
+$ cd MeshCore
+$ patch -p 1 < ../meshcore-pi/meshcore.patch
+```
+
+The companion radio has to be connected over a serial port. While in use
+as a radio for meshcore-pi, it can't be used with the app. It will not see
+a copy of anything transmitted, unless it is repeated back to the radio.
+
+
+Configuration file
+------------------
+
+The default config file is config.toml; it uses the TOML config language.
+
+.NET host install
+-----------------
+
+The repository includes a .NET host in `meshcore-net/` and helper scripts at the repository root.
+
+Build and publish the runtime artifacts:
+
+```bash
+./build.sh --publish
+```
+
+Publish output defaults to `publish/linux-arm64`. To target another RID:
+
+```bash
+./build.sh --publish -r linux-x64 -o publish/linux-x64
+```
+
+Install the published runtime and systemd service:
+
+```bash
+sudo ./install.sh
+```
+
+For LoRa hardware mode, the host requires `libgpiod` userspace support.
+Package names vary by distro release (`libgpiod0/1/2/2t64/3` or `gpiod`), and `install.sh` now tries these variants automatically when available.
+
+By default, `install.sh` installs:
+
+- runtime files: `/var/lib/meshcore`
+- executable symlink: `/usr/local/bin/meshcore-net`
+- executable symlink: `/usr/local/bin/meshcore-web`
+- executable symlink: `/usr/local/bin/meshcore-repeater`
+- executable symlink: `/usr/local/bin/meshcore-companion`
+- configuration directory: `/etc/meshcore-netcore`
+- credential directory: `/etc/meshcore-netcore`
+- systemd unit: `/etc/systemd/system/meshcore-web.service`
+- systemd unit: `/etc/systemd/system/meshcore-repeater.service`
+- systemd unit: `/etc/systemd/system/meshcore-companion.service`
+
+It also copies default config files from the repository into `/etc/meshcore-netcore` if they are not already present:
+
+- `config.toml`
+- `readonly.toml`
+
+Admin credentials are stored separately under `/etc/meshcore-netcore`:
+
+- `public`
+- `private`
+- `password`
+
+Enable and start the services with:
+
+```bash
+sudo systemctl enable meshcore-web meshcore-repeater meshcore-companion
+sudo systemctl start meshcore-web meshcore-repeater meshcore-companion
+```
+
+The services execute:
+
+```bash
+/usr/local/bin/meshcore-web --service web /etc/meshcore-netcore/config.toml
+/usr/local/bin/meshcore-repeater --service repeater /etc/meshcore-netcore/config.toml
+/usr/local/bin/meshcore-companion --service companion /etc/meshcore-netcore/config.toml
+```
+
+Each service has a dedicated log file in `/var/log/meshcore-netcore`:
+
+- `meshcore-web.log`
+- `meshcore-repeater.log`
+- `meshcore-companion.log`
+
+### GPS position modes
+
+The .NET host supports optional onboard GPS ingest via NMEA serial.
+
+Configure under `[gps]` in `config.toml`:
+
+### LoRa prebuilt regional profiles
+
+LoRa interfaces now support prebuilt global regional profiles with the `profile` key.
+You can still override profile values with explicit `frequency`, `sf`, `bw`, `cr`, and `txpower` fields.
+
+Example:
+
+```toml
+[interface.lora]
+type = "lora"
+profile = "au915-narrow"
+chip = "sx126x"
+```
+
+Australia profiles:
+
+- `au915-narrow`
+- `au915-wide`
+
+Other common regional profiles:
+
+- `eu868-narrow`, `eu868-wide`
+- `eu433-narrow`, `eu433-wide`
+- `us915-narrow`, `us915-wide`
+- `as923-narrow`, `as923-wide`
+- `in865-narrow`, `in865-wide`
+- `kr920-narrow`, `kr920-wide`
+- `ru864-narrow`, `ru864-wide`
+- `cn470-narrow`, `cn470-wide`
+- `cn779-narrow`, `cn779-wide`
+- `jp920-narrow`, `jp920-wide`
+
+- `enabled = true`
+- `mode = "average"` for fixed-point operation (year-retained rolling average)
+- `mode = "roaming"` for mobile operation (latest valid fix)
+
+In both modes, the resolved position is written into each local MeshCore device identity (`SelfIdentity.LatLon`) so it is available to the stack for adverts and messaging flows.
+
+### Debian package
+
+The CI workflow now builds a `.deb` package for `linux-arm64`.
+
+The package is published as self-contained, so it does not require installing `dotnet-runtime-10.0` separately on the target host.
+
+To build locally:
+
+```bash
+./build.sh --publish
+```
+
+Then use `dpkg-deb` or `fakeroot` to build from the published package layout. The workflow performs this automatically and stores the package as an artifact.
+
+Install the package with apt so dependencies are auto-resolved (including `libgpiod2`):
+
+```bash
+sudo apt install ./publish/linux-arm64/meshcore-netcore_0.1.0_arm64.deb
+```
+
+The package version is driven from `Directory.Build.props`.
+
+If there are missing dependencies:
+
+```bash
+sudo apt-get install -f
+```
+
+https://toml.io/en/
+
+The complete set of configuration options are shown in example-config.toml
+
+The main options to be aware of are:
+
+```
+interfaces = ["waveshare"]
+```
+
+The ``interfaces`` option selects which of the interfaces defined in the
+config file are to be used.
+
+```
+devices = ["companion", "room"]
+```
+
+The ``devices`` option selects which of the device profiles defined in the
+config file are in use.
+
+The default config file creates a single repeater by default on the
+generic LoRa path, and the relay dashboard shows the live nodes and
+packet stream it can see. The companion identity used by the host is
+stored in `/etc/meshcore-netcore/private`.
+
+If the key file does not exist, the host generates it during startup and
+records the resulting key path in the log file (which defaults to
+`meshcore.log`).
+
+You can connect the companion radio app on your phone to this using the
+experimental "connect via WiFi" feature. Alternatively, to use the
+MeshCore browser app, change the config to a serial port (see above
+regarding serial interfaces) and connect to that.
+
+At present, Bluetooth connections are not supported.
+
+Other files
+-----------
+
+### Contacts
+
+Where a companion radio records its contacts, they are stored in a file
+(default: contacts.mesh). Each contact is stored as a comment giving the
+contact name, followed by the advert for the contact (in hex) and some
+other data, such as the path to the client (if known).
+
+This file is updated every time the contacts list is updated.
+
+If you run more than one companion, each must have its own file
+
+### Channels
+
+If stored to disk, the channel list for a companion radio is a JSON
+file, defaulting to channels.json
+
+This file contains a single key, "channels", containing a dict of
+channel names and keys in hex.
+
+If a channel name is a hashtag, it is not necessary to specify the key
+
+```
+{
+    "channels": {
+        "Public": "8b3387e9c5cdea6ac9e5edbaa115cd72",
+        "#london": null,
+        "#jokes": null,
+        "#meshcorepi": null
+    }
+}
+```
+
+### Log
+
+The default log file is meshcore.log
+
+If the log level is set to DEBUG, it can be very chatty.
+
+Unsupported features
+--------------------
+
+Most of the basic functionality of MeshCore is supported. However, the
+main missing items are:
+
+* Uncollected messages are not stored persistently - at the moment,
+  messages received by the companion radio device but not passed to the
+  Meshcore app are stored in memory. If meshcore-pi is restarted before
+  the messages are collected, they will be lost.
+* Telemetry - not yet supported
+* Sensors - the battery reading is fake: 0xffff, which will appear in the
+  app as 65.5V, 100%
+* The companion radio name can be changed in the app, though the change is
+  not written to the config, so it is not persistent
+* Most other config cannot be changed through the app (except channels).
+* Radio parameters cannot be changed in the app, though if a LoRa interface
+  is in use, it will display the parameters currently set
+* Room servers and repeaters can't have their configs changed either
+
+
+Future improvements
+-------------------
+(aka the TODO list)
+
+* Telemetry, both for the companion radio and the sensor device type
+* Ability to modify the config through the app or via CLI messages
+* Support more of the companion radio protocol
+* Find a better SX126x library
+* More interface types than just SX126x
+* Look again at the crypto libraries
+
+FAQ
+---
+
+Q. Do I have to run this on a Raspberry Pi?
+
+A. No, though the only supported directly connected interface is the
+   SX126x via SPI and GPIO.
+
+Q. Does it support the GPS functions of the Waveshare LoRa/GNSS HAT?
+
+A. Not at the moment.
+
+Q. Which Raspberries Pi will it run on?
+
+A. 3B and 4, definitely (because I've tested it). It should probably run
+   on all of them.
+
+Q. Will this run under Micropython?
+
+A. No. It might be possible, but some things would have to be rewritten, and
+   it prioritises straightforward code over a light memory footprint.
+
+Q. What do all the different python files do?
+
+A. See below
+
+
+What all the files are
+----------------------
+
+The structure of the software is a series of Python classes which represent
+some kind of Meshcore device. The base class is BasicMesh, and other
+classes build on top of that. A separate ReadonlyDevice class implements
+just enough of the protocol to be able to watch passing traffic but not
+participate in the mesh.
+
+* BasicMesh - Send and receive data from the interface(s) via the dispatcher
+  + CompanionRadio - Client device which acts like a companion radio,
+    talking to the Meshcore app
+  + CLIDevice - Any device which has a CLI and uses Anonymous Requests
+      + Repeater - A repeater
+      + Room - A room server
+* ReadonlyDevice - Just logs arriving packets, decrypting what it can;
+  makes no attempt to respond to anything
+
+
+The dispatcher (dispatch.py) is responsible for taking packets from the
+device class(es) and sending it via the interface
+
+Interfaces:
+* interface.py - Interface class, which other interfaces should subclass
+* lorainterface.py - SX126x LoRa interface
+* mockinterface.py - Pretend, read-only interface which will read packets
+  from a file
+* companioninterface.py - (Mis)use a companion radio as an interface.
+
+Cypto:
+* crypto.py - Wrap crypto functions, allowing the library to be changed if
+  needed
+* ed25519_wrapper.py - Wrap the ED25519 functions, as they have been
+  modified to support 64-byte Meshcore-style private keys
+
+Other:
+* companionserial.py - Talk to a Meshcore app over a serial link
+* companionwifi.py - Ditto, but wifi
+* configuration.py - Config file reader
+* exceptions.py - Various exceptions for packet handling
+* groupchannel.py - Classes related to channels/group messages
+* identity.py - Classes relating to adverts, contacts and private/public keys
+* misc.py - Useful functions that don't fit in another category
+* packet.py - Protocol encoding and decoding classes
+* sensors.py - Interface with hardware sensors, such as the (fake) battery
+  level reading
+
+External files:
+* lib/pure-25519   - pure python library for ED25519, modified to accept
+  64-bit Meshcore private keys
+
+
+Contact
+-------
+
+Please feel free to raise issues or PRs.
+
+If you're in the UK, you could also try sending a message to the
+#meshcorepi channel, or messaging me directly at
+
+```
+659228096caba81b8b32f6e15eb031eea606fd5dfab0302275f848bbac99b24a
+```
+
+Please be aware that I live in a slightly spotty coverage area as far as
+Meshcore is concerned, so while your message will *probably* get through,
+it might not.

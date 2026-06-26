@@ -1,0 +1,56 @@
+# MeshCore .NET config for Raspberry Pi 5 + Dragino LoRa HAT v1.4
+# Copy to /etc/meshcore-netcore/config.toml on the target Pi.
+
+interfaces = ["dragino"]
+devices = ["repeater1"]
+
+[dispatcher]
+pass_internal = false
+
+# Web management
+[server.web]
+port = 80
+
+# Simple admin login seed (change before production use)
+[server]
+admin.password = "change-this-now"
+guest.open = true
+
+# Dragino LoRa HAT v1.4 (SX126x)
+[interface.dragino]
+type = "dragino-hat"
+region = "868"
+chip = "sx126x"
+
+# Raspberry Pi 5 SPI/GPIO mapping used by current meshcore-net host defaults
+spi = 0
+cs = 0
+reset = 18
+busy = 20
+irq = 16
+txen = 6
+rxen = -1
+wake = -1
+
+# Radio defaults (EU868)
+frequency = 869618000
+sf = 8
+bw = 62500
+cr = 8
+txpower = 22
+airtime = 10
+
+# Dragino HAT v1.4 typically does not require DIO2 RF switch control
+# Set true only if your board wiring requires it.
+dio2.rfswitch = false
+
+[device.repeater1]
+type = "repeater"
+name = "Pi5 Dragino Repeater"
+
+# Optional fixed identity (otherwise generated at first run)
+# privatekey = "<64-or-128-hex-chars>"
+
+# Optional location
+# lat = 51.5
+# lon = -0.12

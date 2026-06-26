@@ -1,0 +1,31 @@
+[Unit]
+Description=MeshCore Companion service
+Documentation=man:systemd.service(5)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=meshcore-netcore
+Group=meshcore-netcore
+ExecStart=/usr/local/bin/meshcore-companion --service companion /etc/meshcore-netcore/config.toml
+WorkingDirectory=/var/lib/meshcore
+Restart=always
+RestartSec=10
+StartLimitIntervalSec=60
+StartLimitBurst=3
+TimeoutStopSec=30
+KillMode=control-group
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=meshcore-companion
+Environment=DOTNET_CLI_TELEMETRY_OPTOUT=1
+Environment=MESHCORE_LOG_DIR=/var/log/meshcore-netcore
+Environment=MESHCORE_LOG_FILE=meshcore-companion.log
+ProtectSystem=full
+ProtectHome=yes
+NoNewPrivileges=yes
+ReadWritePaths=/etc/meshcore-netcore /var/lib/meshcore /var/log/meshcore-netcore
+
+[Install]
+WantedBy=multi-user.target
