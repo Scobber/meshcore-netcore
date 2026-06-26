@@ -6,6 +6,7 @@ internal static class Program
 {
     private static async Task<int> Main(string[] args)
     {
+        FullStackLogger.Initialize();
         try
         {
             var configPath = ResolveConfigPath(args);
@@ -20,6 +21,10 @@ internal static class Program
         {
             Console.Error.WriteLine($"MeshCore .NET host failed: {ex.Message}");
             return 1;
+        }
+        finally
+        {
+            FullStackLogger.Shutdown();
         }
     }
 

@@ -6,6 +6,7 @@ PUBLISH_DIR="${SCRIPT_DIR}/publish/linux-arm64"
 BIN_DIR="/usr/local/bin"
 CONFIG_DIR="/etc/meshcore-netcore"
 DATA_DIR="/var/lib/meshcore"
+LOG_DIR="/var/log/meshcore-netcore"
 SYSTEMD_DIR="/etc/systemd/system"
 EXECUTABLE="meshcore-net"
 SERVICE_NAME="meshcore-netcore.service"
@@ -71,6 +72,7 @@ if systemctl list-unit-files | grep -q "^$SERVICE_NAME"; then
 fi
 
 sudo mkdir -p "$BIN_DIR" "$CONFIG_DIR" "$DATA_DIR"
+sudo mkdir -p "$LOG_DIR"
 
 if ! getent group "$SERVICE_GROUP" >/dev/null; then
   sudo groupadd --system "$SERVICE_GROUP"
@@ -122,17 +124,18 @@ StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=meshcore-netcore
 Environment=DOTNET_CLI_TELEMETRY_OPTOUT=1
+Environment=MESHCORE_LOG_DIR=/var/log/meshcore-netcore
 ProtectSystem=full
 ProtectHome=yes
 NoNewPrivileges=yes
-ReadWritePaths=/etc/meshcore-netcore /var/lib/meshcore
+ReadWritePaths=/etc/meshcore-netcore /var/lib/meshcore /var/log/meshcore-netcore
 
 [Install]
 WantedBy=multi-user.target
 Alias=meshcore.service
 EOF
 
-sudo chown -R "$SERVICE_USER:$SERVICE_GROUP" "$DATA_DIR" "$CONFIG_DIR"
+sudo chown -R "$SERVICE_USER:$SERVICE_GROUP" "$DATA_DIR" "$CONFIG_DIR" "$LOG_DIR"
 
 sudo systemctl daemon-reload
 sudo systemctl enable "$SERVICE_NAME"

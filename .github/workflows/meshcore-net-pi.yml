@@ -74,7 +74,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y fakeroot
           rm -rf package
-          mkdir -p package/DEBIAN package/usr/local/bin package/var/lib/meshcore package/etc/meshcore-netcore package/lib/systemd/system
+          mkdir -p package/DEBIAN package/usr/local/bin package/var/lib/meshcore package/var/log/meshcore-netcore package/etc/meshcore-netcore package/lib/systemd/system
           cp -r publish/linux-arm64/* package/var/lib/meshcore/
           ln -s /var/lib/meshcore/meshcore-net package/usr/local/bin/meshcore-net
           cp config.toml package/etc/meshcore-netcore/config.toml
@@ -99,7 +99,7 @@ jobs:
           if ! id -u meshcore-netcore >/dev/null 2>&1; then
             useradd --system --no-create-home --home-dir /var/lib/meshcore --shell /usr/sbin/nologin -g meshcore-netcore meshcore-netcore || true
           fi
-          chown -R meshcore-netcore:meshcore-netcore /var/lib/meshcore /etc/meshcore-netcore || true
+          chown -R meshcore-netcore:meshcore-netcore /var/lib/meshcore /var/log/meshcore-netcore /etc/meshcore-netcore || true
           if command -v systemctl >/dev/null 2>&1; then
             systemctl daemon-reload
             systemctl enable meshcore-netcore.service
