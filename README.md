@@ -250,6 +250,8 @@ The service executes:
 
 The CI workflow now builds a `.deb` package for `linux-arm64`.
 
+The package is published as self-contained, so it does not require installing `dotnet-runtime-10.0` separately on the target host.
+
 To build locally:
 
 ```bash

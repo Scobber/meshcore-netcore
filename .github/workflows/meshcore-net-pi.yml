@@ -60,7 +60,7 @@ jobs:
         run: dotnet test meshcore-net/meshcore-net.Tests/meshcore-net.Tests.csproj --verbosity minimal
 
       - name: Publish Raspberry Pi build
-        run: dotnet publish meshcore-net/meshcore-net.csproj -c Release -r linux-arm64 --self-contained false -o publish/linux-arm64
+        run: dotnet publish meshcore-net/meshcore-net.csproj -c Release -r linux-arm64 --self-contained true -o publish/linux-arm64
 
       - name: Package Debian package
         run: |
@@ -79,7 +79,6 @@ jobs:
           Section: utils
           Priority: optional
           Architecture: arm64
-          Depends: dotnet-runtime-10.0
           Maintainer: MeshCore <meshcore@example.com>
           Description: MeshCore .NET core host and management server
            A Linux .NET host for MeshCore with companion and relay configuration support.
