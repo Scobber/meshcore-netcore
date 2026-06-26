@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Security.Claims;
+using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Authentication;
@@ -70,8 +71,25 @@ public sealed class MeshWebServer
         builder.Services.AddAuthorization();
 
         var app = builder.Build();
-        app.UseAuthentication();
-        app.UseAuthorization();
+        app.Use(async (context, next) =>
+        {
+            var started = Stopwatch.StartNew();
+            try
+            {
+                await next();
+            }
+            catch (Exception ex)
+            {
+                started.Stop();
+                Console.Error.WriteLine($"HTTP {context.Request.Method} {context.Request.Path}{context.Request.QueryString} -> 500 {started.ElapsedMilliseconds}ms ({ex.GetType().Name}: {ex.Message})");
+                throw;
+            }
+            finally
+            {
+                started.Stop();
+                Console.WriteLine($"HTTP {context.Request.Method} {context.Request.Path}{context.Request.QueryString} -> {context.Response.StatusCode} {started.ElapsedMilliseconds}ms");
+            }
+        });
 
         app.Use(async (context, next) =>
         {
@@ -81,7 +99,11 @@ public sealed class MeshWebServer
             await next();
         });
 
+        app.UseAuthentication();
+        app.UseAuthorization();
+
         app.MapGet("/", () => Results.Redirect("/settings"));
+        app.MapGet("/favicon.ico", () => Results.NoContent());
         app.MapGet("/login", async (HttpContext context) =>
         {
             if (context.User?.Identity?.IsAuthenticated is true)
