@@ -22,7 +22,7 @@ public sealed class MeshWebServer
     {
         _config = config;
         _configPath = configPath;
-        _port = GetInt(GetSection("server", "web"), "port", 8080);
+        _port = GetInt(GetSection("server", "web"), "port", 80);
     }
 
     public async Task StartAsync(CancellationToken cancellationToken)
