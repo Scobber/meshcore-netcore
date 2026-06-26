@@ -83,7 +83,7 @@ ensure_libgpiod() {
 
   if command -v apt-get >/dev/null 2>&1; then
     sudo apt-get update
-    sudo apt-get install -y libgpiod2
+    sudo apt-get install -y libgpiod2 || sudo apt-get install -y libgpiod2t64
   elif command -v dnf >/dev/null 2>&1; then
     sudo dnf install -y libgpiod
   elif command -v yum >/dev/null 2>&1; then

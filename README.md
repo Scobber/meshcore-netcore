@@ -222,7 +222,7 @@ sudo ./install.sh
 ```
 
 For LoRa hardware mode, the host requires `libgpiod.so.2`.
-On Debian/Ubuntu this is provided by `libgpiod2` and is now auto-installed by `install.sh` when available.
+On Debian/Ubuntu this is typically provided by `libgpiod2` (or `libgpiod2t64` on newer releases) and is now auto-installed by `install.sh` when available.
 
 By default, `install.sh` installs:
 
