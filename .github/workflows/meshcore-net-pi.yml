@@ -77,9 +77,14 @@ jobs:
           mkdir -p package/DEBIAN package/usr/local/bin package/var/lib/meshcore package/var/log/meshcore-netcore package/etc/meshcore-netcore package/lib/systemd/system
           cp -r publish/linux-arm64/* package/var/lib/meshcore/
           ln -s /var/lib/meshcore/meshcore-net package/usr/local/bin/meshcore-net
+          ln -s /var/lib/meshcore/meshcore-net package/usr/local/bin/meshcore-web
+          ln -s /var/lib/meshcore/meshcore-net package/usr/local/bin/meshcore-repeater
+          ln -s /var/lib/meshcore/meshcore-net package/usr/local/bin/meshcore-companion
           cp config.toml package/etc/meshcore-netcore/config.toml
           cp readonly.toml package/etc/meshcore-netcore/readonly.toml
-          cp meshcore-netcore.service package/lib/systemd/system/meshcore-netcore.service
+          cp meshcore-web.service package/lib/systemd/system/meshcore-web.service
+          cp meshcore-repeater.service package/lib/systemd/system/meshcore-repeater.service
+          cp meshcore-companion.service package/lib/systemd/system/meshcore-companion.service
           cat > package/DEBIAN/control <<EOF
           Package: meshcore-netcore
           Version: ${VERSION}
@@ -123,18 +128,19 @@ jobs:
             fi
           done
           if command -v systemctl >/dev/null 2>&1; then
-            ln -sf /lib/systemd/system/meshcore-netcore.service /etc/systemd/system/meshcore.service || true
-            echo "Created alias: /etc/systemd/system/meshcore.service -> /lib/systemd/system/meshcore-netcore.service"
-            ls -l /etc/systemd/system/meshcore.service || true
+            systemctl disable meshcore-netcore.service >/dev/null 2>&1 || true
+            rm -f /etc/systemd/system/meshcore.service || true
             systemctl daemon-reload
-            systemctl enable meshcore-netcore.service
-            echo "Service enabled: $(systemctl is-enabled meshcore-netcore.service 2>/dev/null || echo unknown)"
-            if ! systemctl restart meshcore-netcore.service; then
-              systemctl --no-pager --full status meshcore-netcore.service || true
-              journalctl -u meshcore-netcore.service -n 80 --no-pager || true
-              exit 1
-            fi
-            echo "Service active: $(systemctl is-active meshcore-netcore.service 2>/dev/null || echo unknown)"
+            for service in meshcore-web.service meshcore-repeater.service meshcore-companion.service; do
+              systemctl enable "$service"
+              echo "Service enabled [$service]: $(systemctl is-enabled "$service" 2>/dev/null || echo unknown)"
+              if ! systemctl restart "$service"; then
+                systemctl --no-pager --full status "$service" || true
+                journalctl -u "$service" -n 80 --no-pager || true
+                exit 1
+              fi
+              echo "Service active [$service]: $(systemctl is-active "$service" 2>/dev/null || echo unknown)"
+            done
           fi
           exit 0
           EOF
@@ -143,6 +149,9 @@ jobs:
           #!/bin/sh
           set -e
           if command -v systemctl >/dev/null 2>&1; then
+            systemctl stop meshcore-web.service >/dev/null 2>&1 || true
+            systemctl stop meshcore-repeater.service >/dev/null 2>&1 || true
+            systemctl stop meshcore-companion.service >/dev/null 2>&1 || true
             systemctl stop meshcore-netcore.service >/dev/null 2>&1 || true
           fi
           exit 0
@@ -152,9 +161,15 @@ jobs:
           #!/bin/sh
           set -e
           if command -v systemctl >/dev/null 2>&1; then
+            systemctl stop meshcore-web.service >/dev/null 2>&1 || true
+            systemctl stop meshcore-repeater.service >/dev/null 2>&1 || true
+            systemctl stop meshcore-companion.service >/dev/null 2>&1 || true
             systemctl stop meshcore-netcore.service >/dev/null 2>&1 || true
             case "$1" in
               remove|purge|deconfigure)
+                systemctl disable meshcore-web.service >/dev/null 2>&1 || true
+                systemctl disable meshcore-repeater.service >/dev/null 2>&1 || true
+                systemctl disable meshcore-companion.service >/dev/null 2>&1 || true
                 systemctl disable meshcore-netcore.service >/dev/null 2>&1 || true
                 ;;
             esac

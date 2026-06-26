@@ -6,7 +6,7 @@ internal static class FullStackLogger
 {
     private static IDisposable? _handle;
 
-    public static void Initialize(string? logDirectory = null)
+    public static void Initialize(string? logDirectory = null, string? logFileName = null)
     {
         if (_handle is not null)
         {
@@ -20,7 +20,10 @@ internal static class FullStackLogger
         try
         {
             Directory.CreateDirectory(directory);
-            var path = Path.Combine(directory, "meshcore-netcore.log");
+            var resolvedFileName = string.IsNullOrWhiteSpace(logFileName)
+                ? Environment.GetEnvironmentVariable("MESHCORE_LOG_FILE") ?? "meshcore-netcore.log"
+                : logFileName;
+            var path = Path.Combine(directory, resolvedFileName);
             var stream = new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.ReadWrite);
             var fileWriter = new StreamWriter(stream, Encoding.UTF8) { AutoFlush = true };
             var consoleOut = Console.Out;

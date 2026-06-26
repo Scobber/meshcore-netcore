@@ -5,6 +5,14 @@ namespace MeshCoreNet;
 /// <summary>
 /// Builds and runs the MeshCore host from the Python-compatible TOML configuration.
 /// </summary>
+public enum HostServiceMode
+{
+    All,
+    Web,
+    Repeater,
+    Companion
+}
+
 public sealed class MeshHost
 {
     private const string CredentialDirectoryPath = "/etc/meshcore-netcore";
@@ -20,15 +28,23 @@ public sealed class MeshHost
         _configPath = configPath;
     }
 
-    public async Task RunAsync(CancellationToken cancellationToken)
+    public async Task RunAsync(CancellationToken cancellationToken, HostServiceMode mode = HostServiceMode.All)
     {
         Console.WriteLine("=== MeshCore .NET host starting ===");
         Console.WriteLine($"MeshCore .NET host version {VersionInfo.AppVersion}");
         Console.WriteLine("Loaded configuration from the MeshCore TOML format.");
 
+        if (mode == HostServiceMode.Web)
+        {
+            var webOnlyServer = new MeshWebServer(_config, _configPath);
+            Console.WriteLine("Running in web-only service mode.");
+            await webOnlyServer.StartAsync(cancellationToken);
+            return;
+        }
+
         var dispatcher = new MeshDispatcher();
         var interfaces = BuildInterfaces();
-        var devices = BuildDevices();
+        var devices = BuildDevices(mode);
         Console.WriteLine($"Mesh service topology: interfaces={interfaces.Count} devices={devices.Count}");
         foreach (var meshInterface in interfaces)
         {
@@ -147,7 +163,7 @@ public sealed class MeshHost
         return result;
     }
 
-    private List<IMeshDevice> BuildDevices()
+    private List<IMeshDevice> BuildDevices(HostServiceMode mode)
     {
         var names = GetStringList("devices") ?? new List<string>();
         var result = new List<IMeshDevice>();
@@ -163,8 +179,19 @@ public sealed class MeshHost
 
             var deviceType = GetString(section, "type") ?? name;
             var displayName = GetString(section, "name") ?? $"{deviceType} {name}";
+            var normalizedDeviceType = deviceType.ToLowerInvariant();
 
-            switch (deviceType.ToLowerInvariant())
+            if (mode == HostServiceMode.Repeater && normalizedDeviceType != "repeater")
+            {
+                continue;
+            }
+
+            if (mode == HostServiceMode.Companion && normalizedDeviceType != "companion")
+            {
+                continue;
+            }
+
+            switch (normalizedDeviceType)
             {
                 case "companion":
                     result.Add(BuildCompanionDevice(section, displayName));

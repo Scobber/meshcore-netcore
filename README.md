@@ -225,9 +225,14 @@ By default, `install.sh` installs:
 
 - runtime files: `/var/lib/meshcore`
 - executable symlink: `/usr/local/bin/meshcore-net`
+- executable symlink: `/usr/local/bin/meshcore-web`
+- executable symlink: `/usr/local/bin/meshcore-repeater`
+- executable symlink: `/usr/local/bin/meshcore-companion`
 - configuration directory: `/etc/meshcore-netcore`
 - credential directory: `/etc/meshcore-netcore`
-- systemd unit: `/etc/systemd/system/meshcore-netcore.service`
+- systemd unit: `/etc/systemd/system/meshcore-web.service`
+- systemd unit: `/etc/systemd/system/meshcore-repeater.service`
+- systemd unit: `/etc/systemd/system/meshcore-companion.service`
 
 It also copies default config files from the repository into `/etc/meshcore-netcore` if they are not already present:
 
@@ -240,18 +245,26 @@ Admin credentials are stored separately under `/etc/meshcore-netcore`:
 - `private`
 - `password`
 
-Enable and start the service with:
+Enable and start the services with:
 
 ```bash
-sudo systemctl enable meshcore-netcore
-sudo systemctl start meshcore-netcore
+sudo systemctl enable meshcore-web meshcore-repeater meshcore-companion
+sudo systemctl start meshcore-web meshcore-repeater meshcore-companion
 ```
 
-The service executes:
+The services execute:
 
 ```bash
-/usr/local/bin/meshcore-net /etc/meshcore-netcore/config.toml
+/usr/local/bin/meshcore-web --service web /etc/meshcore-netcore/config.toml
+/usr/local/bin/meshcore-repeater --service repeater /etc/meshcore-netcore/config.toml
+/usr/local/bin/meshcore-companion --service companion /etc/meshcore-netcore/config.toml
 ```
+
+Each service has a dedicated log file in `/var/log/meshcore-netcore`:
+
+- `meshcore-web.log`
+- `meshcore-repeater.log`
+- `meshcore-companion.log`
 
 ### GPS position modes
 

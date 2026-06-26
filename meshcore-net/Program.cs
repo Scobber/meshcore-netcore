@@ -13,15 +13,24 @@ internal static class Program
             return 0;
         }
 
-        FullStackLogger.Initialize();
+        var options = ParseHostOptions(args);
+
+        FullStackLogger.Initialize(logFileName: options.ServiceMode switch
+        {
+            HostServiceMode.Web => "meshcore-web.log",
+            HostServiceMode.Repeater => "meshcore-repeater.log",
+            HostServiceMode.Companion => "meshcore-companion.log",
+            _ => "meshcore-netcore.log"
+        });
         try
         {
-            var configPath = ResolveConfigPath(args);
+            var configPath = ResolveConfigPath(options.ConfigPathArg);
             Console.WriteLine($"Using configuration file: {configPath}");
+            Console.WriteLine($"Starting host in service mode: {options.ServiceMode.ToString().ToLowerInvariant()}");
 
             var config = SimpleTomlParser.ParseFile(configPath);
             var host = new MeshHost(config, configPath);
-            await host.RunAsync(CancellationToken.None);
+            await host.RunAsync(CancellationToken.None, options.ServiceMode);
             return 0;
         }
         catch (Exception ex)
@@ -52,6 +61,54 @@ internal static class Program
         return true;
     }
 
+    private static HostOptions ParseHostOptions(string[] args)
+    {
+        string? configPathArg = null;
+        var serviceMode = HostServiceMode.All;
+
+        for (var i = 0; i < args.Length; i++)
+        {
+            var arg = args[i];
+            if (arg.StartsWith("--service=", StringComparison.OrdinalIgnoreCase))
+            {
+                serviceMode = ParseServiceMode(arg[(arg.IndexOf('=') + 1)..]);
+                continue;
+            }
+
+            if (arg.Equals("--service", StringComparison.OrdinalIgnoreCase))
+            {
+                if (i + 1 >= args.Length)
+                {
+                    throw new ArgumentException("Missing value for --service. Expected one of: web, repeater, companion, all.");
+                }
+
+                serviceMode = ParseServiceMode(args[++i]);
+                continue;
+            }
+
+            if (arg.StartsWith("--", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            configPathArg ??= arg;
+        }
+
+        return new HostOptions(configPathArg, serviceMode);
+    }
+
+    private static HostServiceMode ParseServiceMode(string value)
+    {
+        return value.Trim().ToLowerInvariant() switch
+        {
+            "web" => HostServiceMode.Web,
+            "repeater" => HostServiceMode.Repeater,
+            "companion" => HostServiceMode.Companion,
+            "all" => HostServiceMode.All,
+            _ => throw new ArgumentException($"Unsupported --service value '{value}'. Expected one of: web, repeater, companion, all.")
+        };
+    }
+
     private static void GenerateAdminKeys(string directory)
     {
         Directory.CreateDirectory(directory);
@@ -78,11 +135,11 @@ internal static class Program
         }
     }
 
-    private static string ResolveConfigPath(string[] args)
+    private static string ResolveConfigPath(string? explicitConfigPath)
     {
-        if (args.Length > 0)
+        if (!string.IsNullOrWhiteSpace(explicitConfigPath))
         {
-            return Path.GetFullPath(args[0]);
+            return Path.GetFullPath(explicitConfigPath);
         }
 
         var searchRoots = new[]
@@ -109,4 +166,6 @@ internal static class Program
 
         throw new FileNotFoundException("No configuration file was found. Pass a path explicitly or place config.toml in the working directory.");
     }
+
+    private sealed record HostOptions(string? ConfigPathArg, HostServiceMode ServiceMode);
 }

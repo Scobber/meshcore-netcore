@@ -11,7 +11,13 @@ DATA_DIR="/var/lib/meshcore"
 LOG_DIR="/var/log/meshcore-netcore"
 SYSTEMD_DIR="/etc/systemd/system"
 EXECUTABLE="meshcore-net"
-SERVICE_NAME="meshcore-netcore.service"
+WEB_EXECUTABLE="meshcore-web"
+REPEATER_EXECUTABLE="meshcore-repeater"
+COMPANION_EXECUTABLE="meshcore-companion"
+WEB_SERVICE_NAME="meshcore-web.service"
+REPEATER_SERVICE_NAME="meshcore-repeater.service"
+COMPANION_SERVICE_NAME="meshcore-companion.service"
+LEGACY_SERVICE_NAME="meshcore-netcore.service"
 SERVICE_USER="meshcore-netcore"
 SERVICE_GROUP="meshcore-netcore"
 
@@ -74,9 +80,11 @@ if [ ! -d "$PUBLISH_DIR" ]; then
   exit 1
 fi
 
-if systemctl list-unit-files | grep -q "^$SERVICE_NAME"; then
-  sudo systemctl stop "$SERVICE_NAME" >/dev/null 2>&1 || true
-fi
+for service in "$WEB_SERVICE_NAME" "$REPEATER_SERVICE_NAME" "$COMPANION_SERVICE_NAME" "$LEGACY_SERVICE_NAME"; do
+  if systemctl list-unit-files | grep -q "^$service"; then
+    sudo systemctl stop "$service" >/dev/null 2>&1 || true
+  fi
+done
 
 sudo mkdir -p "$BIN_DIR" "$CONFIG_DIR" "$DATA_DIR"
 sudo mkdir -p "$CREDENTIAL_DIR"
@@ -93,6 +101,9 @@ fi
 sudo rm -rf "$DATA_DIR"/*
 sudo cp -r "$PUBLISH_DIR"/* "$DATA_DIR"
 sudo ln -sf "$DATA_DIR/$EXECUTABLE" "$BIN_DIR/$EXECUTABLE"
+sudo ln -sf "$DATA_DIR/$EXECUTABLE" "$BIN_DIR/$WEB_EXECUTABLE"
+sudo ln -sf "$DATA_DIR/$EXECUTABLE" "$BIN_DIR/$REPEATER_EXECUTABLE"
+sudo ln -sf "$DATA_DIR/$EXECUTABLE" "$BIN_DIR/$COMPANION_EXECUTABLE"
 
 if [ ! -f "$CONFIG_DIR/config.toml" ]; then
   if [ -f "$SCRIPT_DIR/config.toml" ]; then
@@ -125,45 +136,16 @@ if [ ! -f "$CREDENTIAL_DIR/private" ] || [ ! -f "$CREDENTIAL_DIR/public" ] || [ 
   sudo "$DATA_DIR/$EXECUTABLE" --generate-admin-keys "$CREDENTIAL_DIR"
 fi
 
-sudo tee "$SYSTEMD_DIR/$SERVICE_NAME" >/dev/null <<'EOF'
-[Unit]
-Description=MeshCore .NET worker service
-Documentation=man:systemd.service(5)
-After=network-online.target
-Wants=network-online.target
+sudo cp "$SCRIPT_DIR/meshcore-web.service" "$SYSTEMD_DIR/$WEB_SERVICE_NAME"
+sudo cp "$SCRIPT_DIR/meshcore-repeater.service" "$SYSTEMD_DIR/$REPEATER_SERVICE_NAME"
+sudo cp "$SCRIPT_DIR/meshcore-companion.service" "$SYSTEMD_DIR/$COMPANION_SERVICE_NAME"
 
-[Service]
-Type=simple
-User=meshcore-netcore
-Group=meshcore-netcore
-ExecStart=/usr/local/bin/meshcore-net /etc/meshcore-netcore/config.toml
-WorkingDirectory=/var/lib/meshcore
-Restart=always
-RestartSec=10
-StartLimitIntervalSec=60
-StartLimitBurst=3
-TimeoutStopSec=30
-KillMode=control-group
-StandardOutput=journal
-StandardError=journal
-SyslogIdentifier=meshcore-netcore
-Environment=DOTNET_CLI_TELEMETRY_OPTOUT=1
-Environment=MESHCORE_LOG_DIR=/var/log/meshcore-netcore
-ProtectSystem=full
-ProtectHome=yes
-NoNewPrivileges=yes
-AmbientCapabilities=CAP_NET_BIND_SERVICE
-CapabilityBoundingSet=CAP_NET_BIND_SERVICE
-ReadWritePaths=/etc/meshcore-netcore /var/lib/meshcore /var/log/meshcore-netcore
-
-[Install]
-WantedBy=multi-user.target
-Alias=meshcore.service
-EOF
-
-sudo ln -sf "$SYSTEMD_DIR/$SERVICE_NAME" "$SYSTEMD_DIR/meshcore.service"
-echo "Created service alias symlink: $SYSTEMD_DIR/meshcore.service -> $SYSTEMD_DIR/$SERVICE_NAME"
-ls -l "$SYSTEMD_DIR/meshcore.service"
+if [ -e "$SYSTEMD_DIR/$LEGACY_SERVICE_NAME" ]; then
+  sudo rm -f "$SYSTEMD_DIR/$LEGACY_SERVICE_NAME"
+fi
+if [ -L "$SYSTEMD_DIR/meshcore.service" ]; then
+  sudo rm -f "$SYSTEMD_DIR/meshcore.service"
+fi
 
 sudo chown -R "$SERVICE_USER:$SERVICE_GROUP" "$DATA_DIR" "$LOG_DIR"
 sudo chown root:"$SERVICE_GROUP" "$CONFIG_DIR"
@@ -186,21 +168,32 @@ for credential in password private public; do
 done
 
 sudo systemctl daemon-reload
-sudo systemctl enable "$SERVICE_NAME"
-echo "Service enable result: $(sudo systemctl is-enabled "$SERVICE_NAME" 2>/dev/null || echo unknown)"
-if ! sudo systemctl restart "$SERVICE_NAME"; then
-  sudo systemctl --no-pager --full status "$SERVICE_NAME" || true
-  sudo journalctl -u "$SERVICE_NAME" -n 80 --no-pager || true
-  echo "Service restart failed during install." >&2
-  exit 1
-fi
-echo "Service active result: $(sudo systemctl is-active "$SERVICE_NAME" 2>/dev/null || echo unknown)"
+sudo systemctl disable "$LEGACY_SERVICE_NAME" >/dev/null 2>&1 || true
+
+for service in "$WEB_SERVICE_NAME" "$REPEATER_SERVICE_NAME" "$COMPANION_SERVICE_NAME"; do
+  sudo systemctl enable "$service"
+  echo "Service enable result [$service]: $(sudo systemctl is-enabled "$service" 2>/dev/null || echo unknown)"
+  if ! sudo systemctl restart "$service"; then
+    sudo systemctl --no-pager --full status "$service" || true
+    sudo journalctl -u "$service" -n 80 --no-pager || true
+    echo "Service restart failed during install: $service" >&2
+    exit 1
+  fi
+  echo "Service active result [$service]: $(sudo systemctl is-active "$service" 2>/dev/null || echo unknown)"
+done
 
 echo "Installed MeshCore .NET"
 echo "Executable symlink: $BIN_DIR/$EXECUTABLE"
+echo "Executable symlink: $BIN_DIR/$WEB_EXECUTABLE"
+echo "Executable symlink: $BIN_DIR/$REPEATER_EXECUTABLE"
+echo "Executable symlink: $BIN_DIR/$COMPANION_EXECUTABLE"
 echo "Data directory: $DATA_DIR"
 echo "Config directory: $CONFIG_DIR"
 echo "Credential directory: $CREDENTIAL_DIR"
-echo "Service file: $SYSTEMD_DIR/$SERVICE_NAME"
-echo "Service enabled and restarted: $SERVICE_NAME"
-sudo systemctl --no-pager --full status "$SERVICE_NAME" | sed -n '1,20p'
+echo "Service file: $SYSTEMD_DIR/$WEB_SERVICE_NAME"
+echo "Service file: $SYSTEMD_DIR/$REPEATER_SERVICE_NAME"
+echo "Service file: $SYSTEMD_DIR/$COMPANION_SERVICE_NAME"
+for service in "$WEB_SERVICE_NAME" "$REPEATER_SERVICE_NAME" "$COMPANION_SERVICE_NAME"; do
+  echo "Service enabled and restarted: $service"
+  sudo systemctl --no-pager --full status "$service" | sed -n '1,20p'
+done
