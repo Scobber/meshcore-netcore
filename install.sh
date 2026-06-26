@@ -129,11 +129,12 @@ EOF
 sudo chown -R "$SERVICE_USER:$SERVICE_GROUP" "$DATA_DIR" "$CONFIG_DIR"
 
 sudo systemctl daemon-reload
+sudo systemctl enable "$SERVICE_NAME"
+sudo systemctl restart "$SERVICE_NAME"
 
 echo "Installed MeshCore .NET"
 echo "Executable symlink: $BIN_DIR/$EXECUTABLE"
 echo "Data directory: $DATA_DIR"
 echo "Config directory: $CONFIG_DIR"
 echo "Service file: $SYSTEMD_DIR/$SERVICE_NAME"
-echo "Enable with: sudo systemctl enable $SERVICE_NAME"
-echo "Start with: sudo systemctl start $SERVICE_NAME"
+echo "Service enabled and restarted: $SERVICE_NAME"
