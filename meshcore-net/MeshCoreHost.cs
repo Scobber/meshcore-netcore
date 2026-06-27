@@ -100,14 +100,23 @@ public sealed class MeshHost
         }
 
         var webServerTask = Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
-        if (mode == HostServiceMode.All)
+        if (mode == HostServiceMode.All || mode == HostServiceMode.Repeater)
         {
             var webServer = new MeshWebServer(
                 _config,
                 _configPath,
+                mode: mode == HostServiceMode.All ? HostServiceMode.Repeater : mode,
                 relaySnapshotProvider: () => BuildRelaySnapshot(dispatcher, interfaces, devices),
                 nodeSnapshotProvider: () => BuildNodeSnapshot(dispatcher, devices),
                 debugSnapshotProvider: () => dispatcher.GetDebugSnapshot());
+            webServerTask = webServer.StartAsync(cancellationToken);
+        }
+        else if (mode == HostServiceMode.Companion)
+        {
+            var webServer = new MeshWebServer(
+                _config,
+                _configPath,
+                mode: HostServiceMode.Companion);
             webServerTask = webServer.StartAsync(cancellationToken);
         }
 

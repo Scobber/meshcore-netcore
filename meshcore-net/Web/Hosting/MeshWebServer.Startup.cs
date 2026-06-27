@@ -14,7 +14,8 @@ public sealed partial class MeshWebServer
         ConfigureMiddleware(app);
         MapRoutes(app, cancellationToken);
 
-        Console.WriteLine($"MeshCore web management server starting on http://0.0.0.0:{_port}");
+        var modeLabel = _mode == HostServiceMode.Companion ? "companion" : "repeater";
+        Console.WriteLine($"MeshCore {modeLabel} web management server starting on http://0.0.0.0:{_port}");
         Console.WriteLine("MeshCore web middleware profile: accesslog-v2 favicon-svg dataprotection-local");
         await app.RunAsync(cancellationToken);
     }
