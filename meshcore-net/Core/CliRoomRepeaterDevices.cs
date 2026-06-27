@@ -27,6 +27,7 @@ public sealed class DeviceAccessConfig
 
 public class CliMeshDevice : BasicMeshDevice
 {
+    private const long DirectAdvertSuppressionSeconds = 120;
     private readonly DateTimeOffset _beginTime = DateTimeOffset.UtcNow;
     private readonly HardwarePlatform _hardware;
     private readonly DeviceAccessConfig _config;
@@ -323,8 +324,8 @@ public class CliMeshDevice : BasicMeshDevice
         var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         var floodIntervalSeconds = (long)_floodAdvertInterval.TotalSeconds;
         var nextFlood = lastFlood + floodIntervalSeconds;
-        return (lastFlood + 120) > now ||
-               (nextFlood > now && (nextFlood - 120) < now) ||
+        return (lastFlood + DirectAdvertSuppressionSeconds) > now ||
+               (nextFlood > now && (nextFlood - DirectAdvertSuppressionSeconds) < now) ||
                (nextFlood < now && floodIntervalSeconds > 0);
     }
 
