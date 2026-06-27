@@ -527,6 +527,14 @@ public sealed partial class MeshWebServer
             return value === null || value === undefined ? fallback : value;
         }
 
+        function hasOwnValue(target, key) {
+            return target !== null
+                && target !== undefined
+                && Object.prototype.hasOwnProperty.call(target, key)
+                && target[key] !== null
+                && target[key] !== undefined;
+        }
+
         function healthClass(node) {
             const age = Number(node.ageSeconds ?? 0);
             const rssi = Number(node.rssi ?? -9999);
@@ -787,7 +795,14 @@ public sealed partial class MeshWebServer
             const gps = getPath(config, ['gps'], {});
             const detectedPreset = detectHardwarePreset(repeaterInterfaceName, repeaterInterfaceSection);
             const detectedPresetDefaults = hardwarePresets[detectedPreset] ?? hardwarePresets.custom;
-            const legacyChipSelectPin = repeaterInterfaceSection['cs.pin'];
+            const repeaterNssPin = hasOwnValue(repeaterInterfaceSection, 'nss')
+                ? repeaterInterfaceSection.nss
+                : hasOwnValue(repeaterInterfaceSection, 'cs.pin')
+                    ? repeaterInterfaceSection['cs.pin']
+                    : detectedPresetDefaults.pins.nss;
+            const repeaterDio2RfSwitch = hasOwnValue(repeaterInterfaceSection, 'dio2.rfswitch')
+                ? repeaterInterfaceSection['dio2.rfswitch']
+                : detectedPresetDefaults.dio2RfSwitch;
 
             document.getElementById('cfg-web-port').value = getPath(config, ['server', 'web', 'port'], 80);
 
@@ -798,14 +813,14 @@ public sealed partial class MeshWebServer
             document.getElementById('cfg-repeater-chip').value = repeaterInterfaceSection.chip ?? detectedPresetDefaults.chip;
             document.getElementById('cfg-repeater-spi').value = repeaterInterfaceSection.spi ?? detectedPresetDefaults.pins.spi;
             document.getElementById('cfg-repeater-cs').value = repeaterInterfaceSection.cs ?? detectedPresetDefaults.pins.cs;
-            document.getElementById('cfg-repeater-nss').value = repeaterInterfaceSection.nss ?? legacyChipSelectPin ?? detectedPresetDefaults.pins.nss;
+            document.getElementById('cfg-repeater-nss').value = repeaterNssPin;
             document.getElementById('cfg-repeater-reset').value = repeaterInterfaceSection.reset ?? detectedPresetDefaults.pins.reset;
             document.getElementById('cfg-repeater-busy').value = repeaterInterfaceSection.busy ?? detectedPresetDefaults.pins.busy;
             document.getElementById('cfg-repeater-irq').value = repeaterInterfaceSection.irq ?? detectedPresetDefaults.pins.irq;
             document.getElementById('cfg-repeater-txen').value = repeaterInterfaceSection.txen ?? detectedPresetDefaults.pins.txen;
             document.getElementById('cfg-repeater-rxen').value = repeaterInterfaceSection.rxen ?? detectedPresetDefaults.pins.rxen;
             document.getElementById('cfg-repeater-wake').value = repeaterInterfaceSection.wake ?? detectedPresetDefaults.pins.wake;
-            document.getElementById('cfg-repeater-dio2-rfswitch').checked = repeaterInterfaceSection['dio2.rfswitch'] ?? detectedPresetDefaults.dio2RfSwitch;
+            document.getElementById('cfg-repeater-dio2-rfswitch').checked = repeaterDio2RfSwitch;
 
             const configuredProfile = (repeaterInterfaceSection.profile ?? repeaterInterfaceSection.region ?? repeaterInterfaceSection.band ?? 'eu868-narrow').toString().toLowerCase();
             const profileInput = document.getElementById('cfg-repeater-profile');
