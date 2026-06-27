@@ -83,7 +83,8 @@ public class CliRoomRepeaterTests
         var repeaterAdvert = new MeshAdvertOutgoing(repeater).ToWire();
         var roomAdvert = new MeshAdvertOutgoing(room).ToWire();
         var routedRepeater = MeshPacket.Parse(new MeshAdvertOutgoing(NewSelf(MeshAdvertType.Repeater, 96), flood: true).ToWire());
-        var repeaterViaHop = new MeshPacket(routedRepeater.Header, [0x55], routedRepeater.Payload).ToWire();
+        routedRepeater.AppendHop(0x55);
+        var repeaterViaHop = routedRepeater.ToWire();
 
         await device.HandleFrameAsync(new RadioFrame(repeaterAdvert), CancellationToken.None);
         await device.HandleFrameAsync(new RadioFrame(roomAdvert), CancellationToken.None);
@@ -119,7 +120,8 @@ public class CliRoomRepeaterTests
 
     private sealed class TestInterface : IMeshInterface
     {
-        private readonly Channel<RadioFrame> _frames = Channel.CreateUnbounded<RadioFrame>();
+        private readonly System.Threading.Channels.Channel<RadioFrame> _frames =
+            System.Threading.Channels.Channel.CreateUnbounded<RadioFrame>();
 
         public string Name => "test";
         public string Type => "mock";
