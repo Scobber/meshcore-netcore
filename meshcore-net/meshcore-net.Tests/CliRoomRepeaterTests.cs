@@ -119,7 +119,7 @@ public class CliRoomRepeaterTests
 
     private sealed class TestInterface : IMeshInterface
     {
-        private readonly Channel<RadioFrame> _frames = System.Threading.Channels.Channel.CreateUnbounded<RadioFrame>();
+        private readonly Channel<RadioFrame> _frames = Channel.CreateUnbounded<RadioFrame>();
 
         public string Name => "test";
         public string Type => "mock";

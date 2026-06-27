@@ -324,9 +324,10 @@ public class CliMeshDevice : BasicMeshDevice
         var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         var floodIntervalSeconds = (long)_floodAdvertInterval.TotalSeconds;
         var nextFlood = lastFlood + floodIntervalSeconds;
-        return (lastFlood + DirectAdvertSuppressionSeconds) > now ||
-               (nextFlood > now && (nextFlood - DirectAdvertSuppressionSeconds) < now) ||
-               (nextFlood < now && floodIntervalSeconds > 0);
+        var isTooSoonAfterLastFlood = (lastFlood + DirectAdvertSuppressionSeconds) > now;
+        var isApproachingNextFlood = nextFlood > now && (nextFlood - DirectAdvertSuppressionSeconds) < now;
+        var isMissedFloodSchedule = nextFlood < now && floodIntervalSeconds > 0;
+        return isTooSoonAfterLastFlood || isApproachingNextFlood || isMissedFloodSchedule;
     }
 
     private Task SendSelfAdvertAsync(bool flood, CancellationToken cancellationToken)
