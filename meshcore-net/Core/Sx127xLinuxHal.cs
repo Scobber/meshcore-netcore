@@ -119,7 +119,7 @@ public sealed class ManagedSx127xRadio : ISxRadioHal
         WriteRegister(RegLna, 0x03);
         var bwCode = Sx127xBandwidthCode(_options.Bandwidth);
         var crCode = Sx127xCodingRateCode(_options.CodingRate);
-        var sf = (byte)Math.Clamp((int)_options.SpreadingFactor, 6, 12);
+        var sf = (byte)Math.Clamp((int)_options.SpreadingFactor, 7, 12);
         // RegModemConfig1: bits[7:4]=BW, bits[3:1]=CR, bit[0]=explicit-header(0)
         var modemConfig1 = (byte)((bwCode << 4) | (crCode << 1));
         // RegModemConfig2: bits[7:4]=SF, bit[2]=RxPayloadCrcOn(1)
