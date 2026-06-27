@@ -41,12 +41,12 @@ retention_days = 365
 
 [interface.lora]
 type = "lora"
-profile = "eu868-narrow"
+profile = "eu-narrow"
 
 # Common Pi SX126x defaults. Adjust to match your radio board.
 chip = "sx126x"
 
-# UK/EU default mesh channel.
+# eu-narrow is the recommended EU/UK MeshCore channel (869.618 MHz, SF8, 62.5 kHz, CR 4/8).
 # Explicit values can still override profile defaults when needed.
 # frequency = 869618000
 # sf = 8
@@ -55,8 +55,13 @@ chip = "sx126x"
 # txpower = 22
 
 # Australia profile examples:
-# profile = "au915-narrow"
-# profile = "au915-wide"
+# profile = "au"           # 915.800 MHz, SF10, 250 kHz (VIC/NSW/ACT/TAS/northern WA/NT)
+# profile = "au-victoria"  # 916.575 MHz, SF7, 62.5 kHz (Victoria narrow)
+# profile = "au-qld"       # 923.125 MHz, SF8, 62.5 kHz (QLD/SA/WA/NT)
+# USA/Canada:
+# profile = "usa"          # 910.525 MHz, SF7, 62.5 kHz
+# EU long range:
+# profile = "eu-long-range"   # 869.525 MHz, SF11, 250 kHz
 
 [device.repeater]
 type = "repeater"
