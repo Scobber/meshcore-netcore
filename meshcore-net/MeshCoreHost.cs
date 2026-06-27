@@ -105,7 +105,7 @@ public sealed class MeshHost
             var webServer = new MeshWebServer(
                 _config,
                 _configPath,
-                mode: mode == HostServiceMode.All ? HostServiceMode.Repeater : mode,
+                mode: HostServiceMode.Repeater,
                 relaySnapshotProvider: () => BuildRelaySnapshot(dispatcher, interfaces, devices),
                 nodeSnapshotProvider: () => BuildNodeSnapshot(dispatcher, devices),
                 debugSnapshotProvider: () => dispatcher.GetDebugSnapshot());
