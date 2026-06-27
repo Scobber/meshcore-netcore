@@ -95,6 +95,37 @@ public class CliRoomRepeaterTests
         Assert.Equal(repeater.PublicKey, neighbours[0].PublicKey);
     }
 
+    [Fact]
+    public async Task HeardIdentitiesContainsAllAdvertTypesIncludingCompanionAndRoom()
+    {
+        var device = NewCliDevice(new DeviceAccessConfig());
+        var dispatcher = new MeshDispatcher();
+        await device.StartAsync(CancellationToken.None, dispatcher);
+
+        var repeater = NewSelf(MeshAdvertType.Repeater, 32);
+        var room = NewSelf(MeshAdvertType.Room, 64);
+        var chat = NewSelf(MeshAdvertType.Chat, 96);
+        var routedRepeater = MeshPacket.Parse(new MeshAdvertOutgoing(NewSelf(MeshAdvertType.Repeater, 128), flood: true).ToWire());
+        routedRepeater.AppendHop(0x55);
+
+        await device.HandleFrameAsync(new RadioFrame(new MeshAdvertOutgoing(repeater).ToWire()), CancellationToken.None);
+        await device.HandleFrameAsync(new RadioFrame(new MeshAdvertOutgoing(room).ToWire()), CancellationToken.None);
+        await device.HandleFrameAsync(new RadioFrame(new MeshAdvertOutgoing(chat).ToWire()), CancellationToken.None);
+        await device.HandleFrameAsync(new RadioFrame(routedRepeater.ToWire()), CancellationToken.None);
+
+        var heard = device.HeardIdentities.GetAll();
+        // All four distinct nodes must appear in HeardIdentities.
+        Assert.Equal(4, heard.Count);
+        Assert.Contains(heard, n => n.PublicKey.SequenceEqual(repeater.PublicKey));
+        Assert.Contains(heard, n => n.PublicKey.SequenceEqual(room.PublicKey));
+        Assert.Contains(heard, n => n.PublicKey.SequenceEqual(chat.PublicKey));
+
+        // NeighbourIdentities is still limited to direct-hop repeaters.
+        var neighbours = device.NeighbourIdentities.GetAll();
+        Assert.Single(neighbours);
+        Assert.Equal(repeater.PublicKey, neighbours[0].PublicKey);
+    }
+
     private static CliMeshDevice NewCliDevice(DeviceAccessConfig config)
     {
         return new CliMeshDevice("CLI", "cli", NewSelf(MeshAdvertType.Repeater), new IdentityStore(), new IdentityStore(), new HardwarePlatform(), config);

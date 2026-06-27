@@ -117,9 +117,19 @@ public sealed class ManagedSx127xRadio : ISxRadioHal
         WriteRegister(RegFifoTxBaseAddr, 0x00);
         WriteRegister(RegFifoRxBaseAddr, 0x00);
         WriteRegister(RegLna, 0x03);
-        WriteRegister(RegModemConfig1, 0x72);
-        WriteRegister(RegModemConfig2, 0x74);
-        WriteRegister(RegModemConfig3, 0x04);
+        var bwCode = Sx127xBandwidthCode(_options.Bandwidth);
+        var crCode = Sx127xCodingRateCode(_options.CodingRate);
+        var sf = (byte)Math.Clamp((int)_options.SpreadingFactor, 7, 12);
+        // RegModemConfig1: bits[7:4]=BW, bits[3:1]=CR, bit[0]=explicit-header(0)
+        var modemConfig1 = (byte)((bwCode << 4) | (crCode << 1));
+        // RegModemConfig2: bits[7:4]=SF, bit[2]=RxPayloadCrcOn(1)
+        var modemConfig2 = (byte)((sf << 4) | 0x04);
+        // RegModemConfig3: bit[3]=LowDataRateOptimize (required for SF11/SF12 with BW<=125kHz), bit[2]=AgcAutoOn
+        var modemConfig3 = (byte)(NeedLowDataRateOptimize(sf, _options.Bandwidth) ? 0x0C : 0x04);
+
+        WriteRegister(RegModemConfig1, modemConfig1);
+        WriteRegister(RegModemConfig2, modemConfig2);
+        WriteRegister(RegModemConfig3, modemConfig3);
         WriteRegister(RegPreambleMsb, 0x00);
         WriteRegister(RegPreambleLsb, 0x08);
         WriteRegister(RegPayloadLength, 0x00);
@@ -134,6 +144,7 @@ public sealed class ManagedSx127xRadio : ISxRadioHal
         WriteRegister(RegOcp, 0x0B);
         WriteRegister(RegOpMode, ModeStandby);
 
+        Console.WriteLine($"SX127x LoRa initialized: freq={_options.Frequency} Hz sf={sf} bw={_options.Bandwidth} Hz cr=4/{_options.CodingRate} txpower={_options.TxPower} dBm ldro={NeedLowDataRateOptimize(sf, _options.Bandwidth)}");
         _initialized = true;
     }
 
@@ -350,4 +361,34 @@ public sealed class ManagedSx127xRadio : ISxRadioHal
             throw new InvalidOperationException("SX127x radio is not initialized.");
         }
     }
+
+    // SX127x (SX1276) RegModemConfig1 bits [7:4] — bandwidth code table (datasheet table 41).
+    public static byte Sx127xBandwidthCode(uint bandwidth) => bandwidth switch
+    {
+        7_800 or 7_810 => 0,
+        10_400 or 10_420 => 1,
+        15_600 or 15_630 => 2,
+        20_800 or 20_830 => 3,
+        31_250 => 4,
+        41_700 => 5,
+        62_500 => 6,
+        125_000 => 7,
+        250_000 => 8,
+        500_000 => 9,
+        _ => 7  // default: 125 kHz
+    };
+
+    // SX127x RegModemConfig1 bits [3:1] — coding-rate code. CR 4/5=1, 4/6=2, 4/7=3, 4/8=4.
+    public static byte Sx127xCodingRateCode(byte codingRate) => codingRate switch
+    {
+        5 => 1,
+        6 => 2,
+        7 => 3,
+        8 => 4,
+        _ => 1  // default: 4/5
+    };
+
+    // LowDataRateOptimize (RegModemConfig3 bit 3) is mandatory for SF11/SF12 when BW<=125kHz.
+    public static bool NeedLowDataRateOptimize(byte spreadingFactor, uint bandwidth)
+        => spreadingFactor >= 11 && bandwidth <= 125_000;
 }
