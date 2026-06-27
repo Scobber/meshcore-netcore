@@ -71,6 +71,10 @@ name = "Mesh Relay"
 guest.open = true
 readonly = false
 
+# Scheduled self adverts (MeshCore defaults)
+# advert.flood = -1   # -1 disabled, 0 once on startup, >0 repeat every N hours
+# advert.direct = 0   # -1 disabled, 0 once on startup, >0 repeat every N minutes
+
 # Waveshare LoRa HAT
 [interface.waveshare]
 

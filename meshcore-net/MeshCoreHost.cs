@@ -487,7 +487,9 @@ public sealed class MeshHost
             WriterPassword = GetString(section, "writer.password"),
             WriterKeys = GetStringSet(section, "writer.keys", "writer.pubkeys"),
             ReadOnly = GetBool(section, "readonly", false),
-            Welcome = GetString(section, "welcome")
+            Welcome = GetString(section, "welcome"),
+            AdvertFloodHours = GetInt(section, "advert.flood", -1),
+            AdvertDirectMinutes = GetInt(section, "advert.direct", 0)
         };
     }
 
