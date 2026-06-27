@@ -633,28 +633,42 @@ public sealed partial class MeshWebServer
         }
 
         const loraProfiles = {
-            'eu868-narrow': { frequency: 869618000, bw: 62500, sf: 8, cr: 8, txpower: 22 },
-            'eu868-wide': { frequency: 868100000, bw: 125000, sf: 8, cr: 8, txpower: 22 },
-            'eu433-narrow': { frequency: 433175000, bw: 62500, sf: 8, cr: 8, txpower: 20 },
-            'eu433-wide': { frequency: 433175000, bw: 125000, sf: 8, cr: 8, txpower: 20 },
-            'us915-narrow': { frequency: 915000000, bw: 62500, sf: 8, cr: 8, txpower: 22 },
-            'us915-wide': { frequency: 915000000, bw: 125000, sf: 8, cr: 8, txpower: 22 },
-            'au915-narrow': { frequency: 916800000, bw: 62500, sf: 8, cr: 8, txpower: 22 },
-            'au915-wide': { frequency: 916800000, bw: 125000, sf: 8, cr: 8, txpower: 22 },
-            'as923-narrow': { frequency: 923200000, bw: 62500, sf: 8, cr: 8, txpower: 16 },
-            'as923-wide': { frequency: 923200000, bw: 125000, sf: 8, cr: 8, txpower: 16 },
-            'in865-narrow': { frequency: 865062500, bw: 62500, sf: 8, cr: 8, txpower: 20 },
-            'in865-wide': { frequency: 865062500, bw: 125000, sf: 8, cr: 8, txpower: 20 },
-            'kr920-narrow': { frequency: 922100000, bw: 62500, sf: 8, cr: 8, txpower: 14 },
-            'kr920-wide': { frequency: 922100000, bw: 125000, sf: 8, cr: 8, txpower: 14 },
-            'ru864-narrow': { frequency: 864100000, bw: 62500, sf: 8, cr: 8, txpower: 20 },
-            'ru864-wide': { frequency: 864100000, bw: 125000, sf: 8, cr: 8, txpower: 20 },
-            'cn470-narrow': { frequency: 470300000, bw: 62500, sf: 8, cr: 8, txpower: 17 },
-            'cn470-wide': { frequency: 470300000, bw: 125000, sf: 8, cr: 8, txpower: 17 },
-            'cn779-narrow': { frequency: 779500000, bw: 62500, sf: 8, cr: 8, txpower: 10 },
-            'cn779-wide': { frequency: 779500000, bw: 125000, sf: 8, cr: 8, txpower: 10 },
-            'jp920-narrow': { frequency: 920800000, bw: 62500, sf: 8, cr: 8, txpower: 13 },
-            'jp920-wide': { frequency: 920800000, bw: 125000, sf: 8, cr: 8, txpower: 13 }
+            // Values must match LoRaProfiles.cs (the canonical source of truth).
+            // eu-narrow / EU868 Narrow
+            'eu868-narrow': { frequency: 869618000, bw: 62500,  sf: 8,  cr: 8, txpower: 22 },
+            // eu-long-range / EU868 Wide (SDRAngel EU_LONG_RANGE)
+            'eu868-wide':   { frequency: 869525000, bw: 250000, sf: 11, cr: 5, txpower: 22 },
+            // eu433 / EU433 (SDRAngel EU_433_LONG_RANGE — single profile, same params for both aliases)
+            'eu433-narrow': { frequency: 433650000, bw: 250000, sf: 11, cr: 5, txpower: 20 },
+            'eu433-wide':   { frequency: 433650000, bw: 250000, sf: 11, cr: 5, txpower: 20 },
+            // usa / US915 (SDRAngel USA + supply-drop-bbs — single profile for all US aliases)
+            'us915-narrow': { frequency: 910525000, bw: 62500,  sf: 7,  cr: 5, txpower: 22 },
+            'us915-wide':   { frequency: 910525000, bw: 62500,  sf: 7,  cr: 5, txpower: 22 },
+            // au-victoria / AU915 Narrow (SDRAngel AU_VICTORIA)
+            'au915-narrow': { frequency: 916575000, bw: 62500,  sf: 7,  cr: 8, txpower: 22 },
+            // au / AU915 Wide (SDRAngel AU + supply-drop-bbs)
+            'au915-wide':   { frequency: 915800000, bw: 250000, sf: 10, cr: 5, txpower: 22 },
+            // vn / AS923 (SDRAngel VN + supply-drop-bbs — single profile for all AS923 aliases)
+            'as923-narrow': { frequency: 920250000, bw: 250000, sf: 11, cr: 5, txpower: 16 },
+            'as923-wide':   { frequency: 920250000, bw: 250000, sf: 11, cr: 5, txpower: 16 },
+            // in865 / IN865
+            'in865-narrow': { frequency: 865062500, bw: 62500,  sf: 8,  cr: 8, txpower: 20 },
+            'in865-wide':   { frequency: 865062500, bw: 62500,  sf: 8,  cr: 8, txpower: 20 },
+            // kr920 / KR920
+            'kr920-narrow': { frequency: 922100000, bw: 62500,  sf: 8,  cr: 8, txpower: 14 },
+            'kr920-wide':   { frequency: 922100000, bw: 62500,  sf: 8,  cr: 8, txpower: 14 },
+            // ru864 / RU864
+            'ru864-narrow': { frequency: 864100000, bw: 62500,  sf: 8,  cr: 8, txpower: 20 },
+            'ru864-wide':   { frequency: 864100000, bw: 62500,  sf: 8,  cr: 8, txpower: 20 },
+            // cn470 / CN470
+            'cn470-narrow': { frequency: 470300000, bw: 62500,  sf: 8,  cr: 8, txpower: 17 },
+            'cn470-wide':   { frequency: 470300000, bw: 62500,  sf: 8,  cr: 8, txpower: 17 },
+            // cn779 / CN779
+            'cn779-narrow': { frequency: 779500000, bw: 62500,  sf: 8,  cr: 8, txpower: 10 },
+            'cn779-wide':   { frequency: 779500000, bw: 62500,  sf: 8,  cr: 8, txpower: 10 },
+            // jp920 / JP920
+            'jp920-narrow': { frequency: 920800000, bw: 62500,  sf: 8,  cr: 8, txpower: 13 },
+            'jp920-wide':   { frequency: 920800000, bw: 62500,  sf: 8,  cr: 8, txpower: 13 }
         };
 
         const hardwarePresets = {
