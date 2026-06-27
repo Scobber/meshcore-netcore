@@ -3,7 +3,14 @@ namespace MeshCoreNet;
 public sealed partial class MeshWebServer
 {
     private static string FooterHtml() => $"<footer style=\"margin-top: 1.5rem; font-size: 0.85rem; color: #6a737d;\">MeshCore .NET host version {VersionInfo.AppVersion} — MIT license</footer>";
-    private static string LoginPageHtml() => """
+    private string LoginPageHtml()
+    {
+        var badge = _mode == HostServiceMode.Companion ? "COMPANION ADMIN" : "REPEATER ADMIN";
+        var heading = _mode == HostServiceMode.Companion ? "Sign In To Companion Control" : "Sign In To Repeater Control";
+        var description = _mode == HostServiceMode.Companion
+            ? "Authenticate with your admin password or approved public key to manage companion radio settings."
+            : "Authenticate with your admin password or approved public key to manage relay and repeater settings.";
+        return $$"""
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -183,9 +190,9 @@ public sealed partial class MeshWebServer
 <body>
     <main class="scene">
         <section class="card">
-            <div class="badge">MESHCORE ADMIN</div>
-            <h1>Sign In To Router Control</h1>
-            <p>Authenticate with your admin password or approved public key to manage relay and companion settings.</p>
+            <div class="badge">{{badge}}</div>
+            <h1>{{heading}}</h1>
+            <p>{{description}}</p>
             <form method="post" action="/login">
                 <label>
                     Admin public key (hex)
@@ -201,20 +208,25 @@ public sealed partial class MeshWebServer
                 </div>
             </form>
             <div class="footer-wrap">
-""" + FooterHtml() + """
+{FooterHtml()}
             </div>
         </section>
     </main>
 </body>
 </html>
 """;
+    }
 
-    private static string SettingsPageHtml() => """
+    private string SettingsPageHtml() => _mode == HostServiceMode.Companion
+        ? CompanionSettingsPageHtml()
+        : RepeaterSettingsPageHtml();
+
+    private static string RepeaterSettingsPageHtml() => """
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8" />
-    <title>MeshCore Admin Console</title>
+    <title>MeshCore Repeater Admin Console</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <style>
         body { font-family: Arial, sans-serif; margin: 1rem; background: #f6f8fa; color: #202124; }
@@ -241,8 +253,8 @@ public sealed partial class MeshWebServer
 <body>
     <header>
         <div>
-            <h1>MeshCore Admin Console</h1>
-            <p>Manage companion, relay, and node configuration from one place.</p>
+            <h1>MeshCore Repeater Admin Console</h1>
+            <p>Manage repeater, relay, and node configuration from one place.</p>
         </div>
         <div>
             <a href="/logout">Logout</a>
@@ -413,38 +425,6 @@ public sealed partial class MeshWebServer
             </label>
             <label>Welcome text:
                 <input id="cfg-welcome" type="text" />
-            </label>
-
-            <h3>Companion service</h3>
-            <label>
-                <input id="cfg-companion-enabled" type="checkbox" /> Enable companion service
-            </label>
-            <label>Companion name:
-                <input id="cfg-companion-name" type="text" />
-            </label>
-            <label>Companion app interface:
-                <select id="cfg-companion-app-interface">
-                    <option value="wifi">wifi</option>
-                    <option value="serial">serial</option>
-                </select>
-            </label>
-            <label>Companion WiFi port:
-                <input id="cfg-companion-wifi-port" type="number" min="1" max="65535" />
-            </label>
-            <label>Companion WiFi listen:
-                <input id="cfg-companion-wifi-listen" type="text" placeholder="0.0.0.0" />
-            </label>
-            <label>Companion serial port:
-                <input id="cfg-companion-serial-port" type="text" placeholder="/dev/ttyS0" />
-            </label>
-            <label>Companion serial speed:
-                <input id="cfg-companion-serial-speed" type="number" min="1200" max="3000000" />
-            </label>
-            <label>Companion channels:
-                <input id="cfg-companion-channels" type="number" min="1" max="64" />
-            </label>
-            <label>
-                <input id="cfg-companion-add-public" type="checkbox" /> Add public channel automatically
             </label>
 
             <h3>GPS tracking</h3>
@@ -850,16 +830,6 @@ public sealed partial class MeshWebServer
             document.getElementById('cfg-admin-password').value = repeaterDeviceSection['admin.password'] ?? '';
             document.getElementById('cfg-welcome').value = repeaterDeviceSection['welcome'] ?? '';
 
-            document.getElementById('cfg-companion-enabled').checked = companionEnabled;
-            document.getElementById('cfg-companion-name').value = companionDeviceSection.name ?? 'Companion Radio';
-            document.getElementById('cfg-companion-app-interface').value = companionDeviceSection.interface ?? 'wifi';
-            document.getElementById('cfg-companion-wifi-port').value = companionDeviceSection['wifi.port'] ?? 5000;
-            document.getElementById('cfg-companion-wifi-listen').value = companionDeviceSection['wifi.listen'] ?? '0.0.0.0';
-            document.getElementById('cfg-companion-serial-port').value = companionDeviceSection['serial.port'] ?? '/dev/ttyS0';
-            document.getElementById('cfg-companion-serial-speed').value = companionDeviceSection['serial.speed'] ?? 115200;
-            document.getElementById('cfg-companion-channels').value = companionDeviceSection.channels ?? 32;
-            document.getElementById('cfg-companion-add-public').checked = companionDeviceSection.add_public_channel ?? true;
-
             document.getElementById('cfg-gps-enabled').checked = !!gps.enabled;
             document.getElementById('cfg-gps-mode').value = gps.mode ?? 'average';
             document.getElementById('cfg-gps-device').value = gps.device ?? '/dev/serial0';
@@ -872,17 +842,12 @@ public sealed partial class MeshWebServer
             const config = JSON.parse(JSON.stringify(currentConfig ?? {}));
             const webPort = Number(document.getElementById('cfg-web-port').value || 80);
             const repeaterEnabled = document.getElementById('cfg-repeater-enabled').checked;
-            const companionEnabled = document.getElementById('cfg-companion-enabled').checked;
             const repeaterInterfaceName = (document.getElementById('cfg-repeater-interface-name').value || 'lora').trim();
             const selectedHardwarePreset = document.getElementById('cfg-repeater-hardware-preset').value;
 
             const devices = [];
             if (repeaterEnabled) {
                 devices.push('repeater');
-            }
-
-            if (companionEnabled) {
-                devices.push('companion');
             }
 
             if (devices.length === 0) {
@@ -958,20 +923,6 @@ public sealed partial class MeshWebServer
             } else {
                 delete deviceRoot.repeater.welcome;
             }
-
-            if (!("companion" in deviceRoot) || typeof deviceRoot.companion !== 'object' || Array.isArray(deviceRoot.companion)) {
-                deviceRoot.companion = {};
-            }
-
-            deviceRoot.companion.type = 'companion';
-            deviceRoot.companion.name = (document.getElementById('cfg-companion-name').value || 'Companion Radio').trim();
-            deviceRoot.companion.interface = document.getElementById('cfg-companion-app-interface').value;
-            deviceRoot.companion['wifi.port'] = Number(document.getElementById('cfg-companion-wifi-port').value || 5000);
-            deviceRoot.companion['wifi.listen'] = (document.getElementById('cfg-companion-wifi-listen').value || '0.0.0.0').trim();
-            deviceRoot.companion['serial.port'] = (document.getElementById('cfg-companion-serial-port').value || '/dev/ttyS0').trim();
-            deviceRoot.companion['serial.speed'] = Number(document.getElementById('cfg-companion-serial-speed').value || 115200);
-            deviceRoot.companion.channels = Number(document.getElementById('cfg-companion-channels').value || 32);
-            deviceRoot.companion.add_public_channel = document.getElementById('cfg-companion-add-public').checked;
 
             const gps = ensurePath(config, ['gps']);
             gps.enabled = document.getElementById('cfg-gps-enabled').checked;
@@ -1104,6 +1055,296 @@ public sealed partial class MeshWebServer
         loadRelay();
         loadNodes();
         loadDebug();
+        loadConfig();
+    </script>
+</body>
+</html>
+""";
+
+    private static string CompanionSettingsPageHtml() => """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <title>MeshCore Companion Admin Console</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <style>
+        body { font-family: Arial, sans-serif; margin: 1rem; background: #f6f8fa; color: #202124; }
+        header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; }
+        nav a { margin-right: 1rem; text-decoration: none; color: #1f5bb5; }
+        nav a.active { font-weight: bold; }
+        section { background: white; border: 1px solid #d7dde4; border-radius: 8px; padding: 1rem; }
+        textarea { width: 100%; height: 50vh; font-family: monospace; margin-top: 0.5rem; }
+        button { margin-right: 0.5rem; }
+        .hidden { display: none; }
+        .card { padding: 1rem; background: #fff; border: 1px solid #e1e4e8; border-radius: 8px; margin-bottom: 1rem; }
+        .summary { margin: 0.25rem 0 0.75rem 0; color: #586069; font-size: 0.95rem; }
+        #settings-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 0.6rem 1rem; }
+        #settings-form h3 { grid-column: 1 / -1; margin: 0.6rem 0 0.2rem 0; }
+        #settings-form label { display: flex; flex-direction: column; font-size: 0.92rem; gap: 0.2rem; }
+        #settings-form input, #settings-form select { padding: 0.4rem; }
+    </style>
+</head>
+<body>
+    <header>
+        <div>
+            <h1>MeshCore Companion Admin Console</h1>
+            <p>Manage companion radio settings and app connection configuration.</p>
+        </div>
+        <div>
+            <a href="/logout">Logout</a>
+            <button id="export-diagnostics">Export diagnostics</button>
+        </div>
+    </header>
+
+    <nav>
+        <a href="#" id="tab-config" class="active">Settings</a>
+        <a href="#" id="tab-raw">Config</a>
+    </nav>
+
+    <section id="view-config" class="card">
+        <h2>Companion settings</h2>
+        <div>
+            <button id="reload">Reload settings</button>
+            <button id="save">Save settings</button>
+            <button id="save-raw">Save raw JSON</button>
+        </div>
+        <div id="config-status" class="summary">Loading settings...</div>
+
+        <form id="settings-form">
+            <h3>Web service</h3>
+            <label>Web port:
+                <input id="cfg-web-port" type="number" min="1" max="65535" />
+            </label>
+
+            <h3>Companion service</h3>
+            <label>Companion name:
+                <input id="cfg-companion-name" type="text" />
+            </label>
+            <label>App interface:
+                <select id="cfg-companion-app-interface">
+                    <option value="wifi">wifi</option>
+                    <option value="serial">serial</option>
+                </select>
+            </label>
+            <label>WiFi port:
+                <input id="cfg-companion-wifi-port" type="number" min="1" max="65535" />
+            </label>
+            <label>WiFi listen address:
+                <input id="cfg-companion-wifi-listen" type="text" placeholder="0.0.0.0" />
+            </label>
+            <label>Serial port:
+                <input id="cfg-companion-serial-port" type="text" placeholder="/dev/ttyS0" />
+            </label>
+            <label>Serial speed:
+                <input id="cfg-companion-serial-speed" type="number" min="1200" max="3000000" />
+            </label>
+            <label>Max channels:
+                <input id="cfg-companion-channels" type="number" min="1" max="64" />
+            </label>
+            <label>
+                <input id="cfg-companion-add-public" type="checkbox" /> Add public channel automatically
+            </label>
+        </form>
+
+        <details>
+            <summary>Advanced raw JSON</summary>
+            <textarea id="editor" style="height: 28vh;"></textarea>
+        </details>
+    </section>
+
+    <section id="view-raw" class="card hidden">
+        <h2>Raw configuration</h2>
+        <div>
+            <button id="raw-reload">Reload</button>
+            <button id="raw-save">Save raw JSON</button>
+        </div>
+        <div id="raw-status" class="summary"></div>
+        <textarea id="raw-editor" style="height: 60vh;"></textarea>
+    </section>
+
+""" + FooterHtml() + """
+
+    <script>
+        const views = {
+            config: document.getElementById('view-config'),
+            raw: document.getElementById('view-raw')
+        };
+
+        const tabs = {
+            config: document.getElementById('tab-config'),
+            raw: document.getElementById('tab-raw')
+        };
+
+        Object.entries(tabs).forEach(([name, tab]) => {
+            tab.addEventListener('click', event => {
+                event.preventDefault();
+                showView(name);
+            });
+        });
+
+        function showView(name) {
+            Object.values(views).forEach(view => view.classList.add('hidden'));
+            views[name].classList.remove('hidden');
+            Object.values(tabs).forEach(tab => tab.classList.remove('active'));
+            tabs[name].classList.add('active');
+        }
+
+        function getPath(root, path, fallback = null) {
+            let current = root;
+            for (const key of path) {
+                if (current === null || current === undefined || typeof current !== 'object' || !(key in current)) {
+                    return fallback;
+                }
+                current = current[key];
+            }
+            return current ?? fallback;
+        }
+
+        function ensurePath(root, path) {
+            let current = root;
+            for (const key of path) {
+                if (!(key in current) || current[key] === null || typeof current[key] !== 'object' || Array.isArray(current[key])) {
+                    current[key] = {};
+                }
+                current = current[key];
+            }
+            return current;
+        }
+
+        function setStatus(message, isError = false) {
+            const status = document.getElementById('config-status');
+            status.textContent = message;
+            status.style.color = isError ? '#b42318' : '#586069';
+        }
+
+        let currentConfig = {};
+
+        function populateSettingsForm(config) {
+            const companionDeviceSection = getPath(config, ['device', 'companion'], {});
+
+            document.getElementById('cfg-web-port').value = getPath(config, ['server', 'web', 'port'], 80);
+            document.getElementById('cfg-companion-name').value = companionDeviceSection.name ?? 'Companion Radio';
+            document.getElementById('cfg-companion-app-interface').value = companionDeviceSection.interface ?? 'wifi';
+            document.getElementById('cfg-companion-wifi-port').value = companionDeviceSection['wifi.port'] ?? 5000;
+            document.getElementById('cfg-companion-wifi-listen').value = companionDeviceSection['wifi.listen'] ?? '0.0.0.0';
+            document.getElementById('cfg-companion-serial-port').value = companionDeviceSection['serial.port'] ?? '/dev/ttyS0';
+            document.getElementById('cfg-companion-serial-speed').value = companionDeviceSection['serial.speed'] ?? 115200;
+            document.getElementById('cfg-companion-channels').value = companionDeviceSection.channels ?? 32;
+            document.getElementById('cfg-companion-add-public').checked = companionDeviceSection.add_public_channel ?? true;
+        }
+
+        function buildConfigFromForm() {
+            const config = JSON.parse(JSON.stringify(currentConfig ?? {}));
+            const webPort = Number(document.getElementById('cfg-web-port').value || 80);
+
+            const serverWeb = ensurePath(config, ['server', 'web']);
+            serverWeb.port = Math.min(65535, Math.max(1, webPort));
+
+            const deviceRoot = ensurePath(config, ['device']);
+            if (!('companion' in deviceRoot) || typeof deviceRoot.companion !== 'object' || Array.isArray(deviceRoot.companion)) {
+                deviceRoot.companion = {};
+            }
+
+            deviceRoot.companion.type = 'companion';
+            deviceRoot.companion.name = (document.getElementById('cfg-companion-name').value || 'Companion Radio').trim();
+            deviceRoot.companion.interface = document.getElementById('cfg-companion-app-interface').value;
+            deviceRoot.companion['wifi.port'] = Number(document.getElementById('cfg-companion-wifi-port').value || 5000);
+            deviceRoot.companion['wifi.listen'] = (document.getElementById('cfg-companion-wifi-listen').value || '0.0.0.0').trim();
+            deviceRoot.companion['serial.port'] = (document.getElementById('cfg-companion-serial-port').value || '/dev/ttyS0').trim();
+            deviceRoot.companion['serial.speed'] = Number(document.getElementById('cfg-companion-serial-speed').value || 115200);
+            deviceRoot.companion.channels = Number(document.getElementById('cfg-companion-channels').value || 32);
+            deviceRoot.companion.add_public_channel = document.getElementById('cfg-companion-add-public').checked;
+
+            return config;
+        }
+
+        async function postConfig(config) {
+            const response = await fetch('/api/config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(config)
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error?.error || 'Save failed');
+            }
+
+            currentConfig = config;
+            document.getElementById('editor').value = JSON.stringify(config, null, 2);
+        }
+
+        async function loadConfig() {
+            const response = await fetch('/api/config');
+            if (!response.ok) {
+                alert('Unable to load configuration.');
+                setStatus('Unable to load settings.', true);
+                return;
+            }
+            const json = await response.json();
+            currentConfig = json;
+            populateSettingsForm(json);
+            document.getElementById('editor').value = JSON.stringify(json, null, 2);
+            document.getElementById('raw-editor').value = JSON.stringify(json, null, 2);
+            setStatus('Settings loaded.');
+        }
+
+        async function saveConfig() {
+            try {
+                const config = buildConfigFromForm();
+                await postConfig(config);
+                setStatus('Settings saved.');
+            } catch (exception) {
+                setStatus(exception.message, true);
+            }
+        }
+
+        async function saveRawConfig() {
+            try {
+                const config = JSON.parse(document.getElementById('editor').value);
+                await postConfig(config);
+                populateSettingsForm(config);
+                setStatus('Raw JSON saved.');
+            } catch (exception) {
+                setStatus(exception.message, true);
+            }
+        }
+
+        document.getElementById('reload').addEventListener('click', loadConfig);
+        document.getElementById('save').addEventListener('click', saveConfig);
+        document.getElementById('save-raw').addEventListener('click', saveRawConfig);
+        document.getElementById('raw-reload').addEventListener('click', loadConfig);
+        document.getElementById('raw-save').addEventListener('click', async () => {
+            try {
+                const config = JSON.parse(document.getElementById('raw-editor').value);
+                await postConfig(config);
+                populateSettingsForm(config);
+                document.getElementById('raw-status').textContent = 'Raw JSON saved.';
+                document.getElementById('raw-status').style.color = '#586069';
+            } catch (exception) {
+                document.getElementById('raw-status').textContent = exception.message;
+                document.getElementById('raw-status').style.color = '#b42318';
+            }
+        });
+        document.getElementById('export-diagnostics').addEventListener('click', async () => {
+            const response = await fetch('/api/diagnostics');
+            if (!response.ok) {
+                alert('Unable to export diagnostics.');
+                return;
+            }
+
+            const blob = await response.blob();
+            const url = URL.createObjectURL(blob);
+            const anchor = document.createElement('a');
+            anchor.href = url;
+            anchor.download = `meshcore-diagnostics-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+            document.body.appendChild(anchor);
+            anchor.click();
+            anchor.remove();
+            URL.revokeObjectURL(url);
+        });
+
         loadConfig();
     </script>
 </body>

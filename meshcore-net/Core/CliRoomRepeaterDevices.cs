@@ -21,13 +21,18 @@ public sealed class DeviceAccessConfig
     public IReadOnlySet<string> WriterKeys { get; init; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
     public bool ReadOnly { get; init; }
     public string? Welcome { get; init; }
+    public int AdvertFloodHours { get; init; } = -1;
+    public int AdvertDirectMinutes { get; init; } = 0;
 }
 
 public class CliMeshDevice : BasicMeshDevice
 {
+    private const long DirectAdvertSuppressionSeconds = 120;
     private readonly DateTimeOffset _beginTime = DateTimeOffset.UtcNow;
     private readonly HardwarePlatform _hardware;
     private readonly DeviceAccessConfig _config;
+    private TimeSpan _floodAdvertInterval = TimeSpan.Zero;
+    private long _lastFloodAdvertUnixSeconds;
 
     public CliMeshDevice(
         string name,
@@ -46,8 +51,20 @@ public class CliMeshDevice : BasicMeshDevice
 
     public IdentityStore NeighbourIdentities { get; }
 
+    public override async Task StartAsync(CancellationToken cancellationToken, MeshDispatcher dispatcher)
+    {
+        await base.StartAsync(cancellationToken, dispatcher).ConfigureAwait(false);
+        _ = Task.Run(() => FloodAdvertLoopAsync(cancellationToken), CancellationToken.None);
+        _ = Task.Run(() => DirectAdvertLoopAsync(cancellationToken), CancellationToken.None);
+    }
+
     public override Task RxAdvertAsync(MeshAdvertPacket packet, CancellationToken cancellationToken)
     {
+        if (packet.Advert.Type != MeshAdvertType.Repeater || packet.PathLength != 0)
+        {
+            return Task.CompletedTask;
+        }
+
         var identity = new MeshIdentity(packet.Advert, advertPath: packet.Path)
         {
             Rssi = packet.Rssi,
@@ -59,10 +76,10 @@ public class CliMeshDevice : BasicMeshDevice
 
     public virtual Task<string?> CliCommandAsync(byte[] command, CancellationToken cancellationToken)
     {
-        var commandText = Encoding.UTF8.GetString(command);
+        var commandText = Encoding.UTF8.GetString(command).Trim().ToLowerInvariant();
         return commandText switch
         {
-            "advert" => Task.FromResult<string?>("OK - Advert sent"),
+            "advert" => SendAdvertCommandAsync(cancellationToken),
             "clock" => Task.FromResult<string?>(DateTimeOffset.UtcNow.ToString("HH:mm - dd/MM/yyyy 'UTC'")),
             "ver" => Task.FromResult<string?>("0.1 (" + DateTimeOffset.UtcNow.ToString("yyyy-MM-dd") + ")"),
             "neighbors" or "neighbours" => Task.FromResult<string?>(Neighbours()),
@@ -248,6 +265,76 @@ public class CliMeshDevice : BasicMeshDevice
     private static void AddU16(List<byte> data, ushort value) => data.AddRange(BitConverter.GetBytes(value));
     private static void AddI16(List<byte> data, short value) => data.AddRange(BitConverter.GetBytes(value));
     private static void AddU32(List<byte> data, uint value) => data.AddRange(BitConverter.GetBytes(value));
+
+    private async Task<string?> SendAdvertCommandAsync(CancellationToken cancellationToken)
+    {
+        await SendSelfAdvertAsync(flood: true, cancellationToken).ConfigureAwait(false);
+        return "OK - Advert sent";
+    }
+
+    private async Task FloodAdvertLoopAsync(CancellationToken cancellationToken)
+    {
+        if (_config.AdvertFloodHours < 0)
+        {
+            return;
+        }
+
+        _floodAdvertInterval = TimeSpan.FromHours(_config.AdvertFloodHours);
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            await SendSelfAdvertAsync(flood: true, cancellationToken).ConfigureAwait(false);
+            Interlocked.Exchange(ref _lastFloodAdvertUnixSeconds, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+            if (_config.AdvertFloodHours == 0)
+            {
+                break;
+            }
+
+            await Task.Delay(_floodAdvertInterval, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    private async Task DirectAdvertLoopAsync(CancellationToken cancellationToken)
+    {
+        if (_config.AdvertDirectMinutes < 0)
+        {
+            return;
+        }
+
+        var directAdvertInterval = TimeSpan.FromMinutes(_config.AdvertDirectMinutes);
+        await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken).ConfigureAwait(false);
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            if (!ShouldSkipDirectAdvert())
+            {
+                await SendSelfAdvertAsync(flood: false, cancellationToken).ConfigureAwait(false);
+            }
+
+            if (_config.AdvertDirectMinutes == 0)
+            {
+                break;
+            }
+
+            await Task.Delay(directAdvertInterval, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    private bool ShouldSkipDirectAdvert()
+    {
+        var lastFlood = Interlocked.Read(ref _lastFloodAdvertUnixSeconds);
+        var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        var floodIntervalSeconds = (long)_floodAdvertInterval.TotalSeconds;
+        var nextFlood = lastFlood + floodIntervalSeconds;
+        var isTooSoonAfterLastFlood = (lastFlood + DirectAdvertSuppressionSeconds) > now;
+        // Skip direct adverts within the suppression window immediately before the next scheduled flood advert.
+        var isApproachingNextFlood = nextFlood > now && (nextFlood - DirectAdvertSuppressionSeconds) < now;
+        var isMissedFloodSchedule = nextFlood < now && floodIntervalSeconds > 0;
+        return isTooSoonAfterLastFlood || isApproachingNextFlood || isMissedFloodSchedule;
+    }
+
+    private Task SendSelfAdvertAsync(bool flood, CancellationToken cancellationToken)
+    {
+        return TransmitPacketAsync(new MeshAdvertOutgoing(Self, flood), cancellationToken);
+    }
 }
 
 public sealed class RepeaterMeshDevice : CliMeshDevice

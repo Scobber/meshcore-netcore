@@ -100,14 +100,23 @@ public sealed class MeshHost
         }
 
         var webServerTask = Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
-        if (mode == HostServiceMode.All)
+        if (mode == HostServiceMode.All || mode == HostServiceMode.Repeater)
         {
             var webServer = new MeshWebServer(
                 _config,
                 _configPath,
+                mode: HostServiceMode.Repeater,
                 relaySnapshotProvider: () => BuildRelaySnapshot(dispatcher, interfaces, devices),
                 nodeSnapshotProvider: () => BuildNodeSnapshot(dispatcher, devices),
                 debugSnapshotProvider: () => dispatcher.GetDebugSnapshot());
+            webServerTask = webServer.StartAsync(cancellationToken);
+        }
+        else if (mode == HostServiceMode.Companion)
+        {
+            var webServer = new MeshWebServer(
+                _config,
+                _configPath,
+                mode: HostServiceMode.Companion);
             webServerTask = webServer.StartAsync(cancellationToken);
         }
 
@@ -478,7 +487,9 @@ public sealed class MeshHost
             WriterPassword = GetString(section, "writer.password"),
             WriterKeys = GetStringSet(section, "writer.keys", "writer.pubkeys"),
             ReadOnly = GetBool(section, "readonly", false),
-            Welcome = GetString(section, "welcome")
+            Welcome = GetString(section, "welcome"),
+            AdvertFloodHours = GetInt(section, "advert.flood", -1),
+            AdvertDirectMinutes = GetInt(section, "advert.direct", 0)
         };
     }
 

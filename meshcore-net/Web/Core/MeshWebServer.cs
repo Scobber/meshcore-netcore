@@ -15,6 +15,7 @@ public sealed partial class MeshWebServer
     private readonly Dictionary<string, object?> _config;
     private readonly string _configPath;
     private readonly int _port;
+    private readonly HostServiceMode _mode;
     private readonly Func<object?>? _relaySnapshotProvider;
     private readonly Func<object?>? _nodeSnapshotProvider;
     private readonly Func<object?>? _debugSnapshotProvider;
@@ -22,12 +23,14 @@ public sealed partial class MeshWebServer
     public MeshWebServer(
         Dictionary<string, object?> config,
         string configPath,
+        HostServiceMode mode = HostServiceMode.All,
         Func<object?>? relaySnapshotProvider = null,
         Func<object?>? nodeSnapshotProvider = null,
         Func<object?>? debugSnapshotProvider = null)
     {
         _config = config;
         _configPath = configPath;
+        _mode = mode;
         _relaySnapshotProvider = relaySnapshotProvider;
         _nodeSnapshotProvider = nodeSnapshotProvider;
         _debugSnapshotProvider = debugSnapshotProvider;
