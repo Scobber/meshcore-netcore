@@ -25,23 +25,27 @@ chip = "sx127x"
 # Raspberry Pi 5 SPI/GPIO mapping for Dragino LoRa HAT v1.4
 #
 # The Dragino HAT v1.4 does NOT use the standard SPI chip selects CE0/CE1.
-# It uses GPIO 25 as its NSS/CS pin.  On a Pi 5 (Raspberry Pi OS Bookworm)
-# you must expose this as /dev/spidev0.2 via a device-tree overlay BEFORE
-# the stack will communicate with the radio.
+# On stock Raspberry Pi OS, SPI0 overlays are limited to spi0-0cs/1cs/2cs
+# and there is no official spi0-3cs overlay. Use /dev/spidev0.0 and set
+# GPIO 25 as manual NSS/CS in this config.
 #
-# Add the following line to /boot/firmware/config.txt and reboot:
+# /boot/firmware/config.txt (Pi 5-safe baseline):
+#   dtparam=spi=on
+#   enable_uart=1
 #
-#   dtoverlay=spi0-3cs,cs2_pin=25
+#   [pi5]
+#   dtoverlay=nospi10
 #
-# Verify the device node appears:
-#   ls /dev/spidev*   # should include /dev/spidev0.2
+#   [all]
 #
-# cs = 2  tells the driver to open /dev/spidev0.2 (GPIO 25 hardware CS).
-# nss = -1 means the kernel handles chip-select via the overlay;
-#          no redundant software GPIO toggle is required.
+# Verify SPI device nodes:
+#   ls /dev/spidev*   # should include /dev/spidev0.0
+#
+# cs = 0  opens /dev/spidev0.0 (standard SPI0 CE0 path).
+# nss = 25 uses Dragino's GPIO 25 as manual software chip-select.
 spi = 0
-cs = 2
-nss = -1
+cs = 0
+nss = 25
 reset = 17
 busy = -1
 irq = 4

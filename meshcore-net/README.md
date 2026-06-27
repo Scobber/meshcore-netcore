@@ -33,10 +33,10 @@ type = "dragino-hat"
 region = "868"
 chip = "sx127x"
 
-# Optional overrides (Pi 5 with spidev0.2 overlay — see setup section below):
+# Optional overrides (stock Pi OS + Dragino manual NSS):
 # spi = 0
-# cs = 2       # /dev/spidev0.2 — GPIO 25 hardware CS via dtoverlay
-# nss = -1     # kernel handles CS; no manual GPIO toggle needed
+# cs = 0       # /dev/spidev0.0
+# nss = 25     # Dragino HAT v1.4 manual NSS/CS on GPIO25
 # reset = 17
 # busy = -1
 # irq = 4
@@ -63,29 +63,35 @@ ls /dev/spidev*
 # /dev/spidev0.0  /dev/spidev0.1
 ```
 
-#### 2. Add the GPIO 25 chip-select overlay
+#### 2. Configure stock Pi 5 SPI/UART baseline
 
-Add the following line to `/boot/firmware/config.txt`:
+Use this baseline in `/boot/firmware/config.txt`:
 
+```ini
+dtparam=spi=on
+enable_uart=1
+
+[pi5]
+dtoverlay=nospi10
+
+[all]
 ```
-dtoverlay=spi0-3cs,cs2_pin=25
-```
 
-Reboot, then verify the third device node is present:
+Reboot, then verify SPI is present:
 
 ```bash
 ls /dev/spidev*
-# /dev/spidev0.0  /dev/spidev0.1  /dev/spidev0.2
+# /dev/spidev0.0  /dev/spidev0.1
 ```
 
-`/dev/spidev0.2` now uses GPIO 25 as its hardware chip select.
+Use `/dev/spidev0.0` and set GPIO 25 as manual NSS in app config.
 
 In `config.dragino-pi5.toml` (or your equivalent config) set:
 
 ```toml
 spi = 0
-cs  = 2      # opens /dev/spidev0.2 — GPIO 25 hardware CS via overlay
-nss = -1     # kernel handles CS; no manual GPIO toggle needed
+cs  = 0      # opens /dev/spidev0.0
+nss = 25     # Dragino HAT v1.4 manual NSS/CS on GPIO25
 ```
 
 #### 3. GPS (optional)
@@ -102,5 +108,4 @@ sudo raspi-config
 
 Then in your config set `[gps] enabled = true` and `device = "/dev/serial0"`.
 See `config.dragino-pi5.toml` for the full GPS block with all available options.
-
 
