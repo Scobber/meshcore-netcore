@@ -206,35 +206,64 @@ Configure under `[gps]` in `config.toml`:
 
 ### LoRa prebuilt regional profiles
 
-LoRa interfaces now support prebuilt global regional profiles with the `profile` key.
-You can still override profile values with explicit `frequency`, `sf`, `bw`, `cr`, and `txpower` fields.
+LoRa interfaces support prebuilt channel profiles with the `profile` key.
+Profiles are grounded in verified real-world MeshCore community deployments.
+You can still override any value with explicit `frequency`, `sf`, `bw`, `cr`, and `txpower` fields.
 
 Example:
 
 ```toml
 [interface.lora]
 type = "lora"
-profile = "au915-narrow"
+profile = "au"
 chip = "sx126x"
 ```
 
-Australia profiles:
+**EU / UK** (ETSI 869 MHz ISM band):
 
-- `au915-narrow`
-- `au915-wide`
+| Profile | Frequency | SF | BW | CR |
+|---|---|---|---|---|
+| `eu-narrow` *(default)* | 869.618 MHz | 8 | 62.5 kHz | 4/8 |
+| `eu-long-range` | 869.525 MHz | 11 | 250 kHz | 4/5 |
+| `eu-medium-range` | 869.525 MHz | 10 | 250 kHz | 4/5 |
+| `ch` (Switzerland) | 869.618 MHz | 8 | 62.5 kHz | 4/8 |
+| `cz` (Czech Republic) | 869.525 MHz | 7 | 62.5 kHz | 4/5 |
+| `pt868` (Portugal) | 869.618 MHz | 7 | 62.5 kHz | 4/6 |
 
-Other common regional profiles:
+**EU 433 MHz**:
 
-- `eu868-narrow`, `eu868-wide`
-- `eu433-narrow`, `eu433-wide`
-- `us915-narrow`, `us915-wide`
-- `as923-narrow`, `as923-wide`
-- `in865-narrow`, `in865-wide`
-- `kr920-narrow`, `kr920-wide`
-- `ru864-narrow`, `ru864-wide`
-- `cn470-narrow`, `cn470-wide`
-- `cn779-narrow`, `cn779-wide`
-- `jp920-narrow`, `jp920-wide`
+| Profile | Frequency | SF | BW | CR |
+|---|---|---|---|---|
+| `eu433` | 433.650 MHz | 11 | 250 kHz | 4/5 |
+| `pt433` (Portugal 433) | 433.375 MHz | 9 | 62.5 kHz | 4/6 |
+
+**Australia / NZ / Pacific**:
+
+| Profile | Frequency | SF | BW | CR |
+|---|---|---|---|---|
+| `au` | 915.800 MHz | 10 | 250 kHz | 4/5 |
+| `au-victoria` | 916.575 MHz | 7 | 62.5 kHz | 4/8 |
+| `au-qld` (QLD/SA/WA/NT) | 923.125 MHz | 8 | 62.5 kHz | 4/5 |
+| `nz` (New Zealand) | 917.375 MHz | 11 | 250 kHz | 4/5 |
+| `nz-narrow` | 917.375 MHz | 7 | 62.5 kHz | 4/5 |
+
+**Americas**:
+
+| Profile | Frequency | SF | BW | CR |
+|---|---|---|---|---|
+| `usa` (USA / Canada) | 910.525 MHz | 7 | 62.5 kHz | 4/5 |
+| `usa-arizona` | 908.205 MHz | 10 | 62.5 kHz | 4/5 |
+
+**Asia**:
+
+| Profile | Frequency | SF | BW | CR |
+|---|---|---|---|---|
+| `vn` (Vietnam / AS923-1) | 920.250 MHz | 11 | 250 kHz | 4/5 |
+
+**Regional approximations** (not verified MeshCore community presets; based on regional frequency allocations):
+`in865`, `kr920`, `ru864`, `cn470`, `cn779`, `jp920`
+
+Old alias names such as `eu868-narrow`, `au915-narrow`, `us915`, `as923`, etc. continue to work.
 
 - `enabled = true`
 - `mode = "average"` for fixed-point operation (year-retained rolling average)
