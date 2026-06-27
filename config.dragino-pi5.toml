@@ -23,6 +23,26 @@ region = "868"
 chip = "sx127x"
 
 # Raspberry Pi 5 SPI/GPIO mapping for Dragino LoRa HAT v1.4
+#
+# The Dragino HAT v1.4 does NOT use the standard SPI chip selects CE0/CE1.
+# On stock Raspberry Pi OS, SPI0 overlays are limited to spi0-0cs/1cs/2cs
+# and there is no official spi0-3cs overlay. Use /dev/spidev0.0 and set
+# GPIO 25 as manual NSS/CS in this config.
+#
+# /boot/firmware/config.txt (Pi 5-safe baseline):
+#   dtparam=spi=on
+#   enable_uart=1
+#
+#   [pi5]
+#   dtoverlay=nospi10
+#
+#   [all]
+#
+# Verify SPI device nodes:
+#   ls /dev/spidev*   # should include /dev/spidev0.0
+#
+# cs = 0  opens /dev/spidev0.0 (standard SPI0 CE0 path).
+# nss = 25 uses Dragino's GPIO 25 as manual software chip-select.
 spi = 0
 cs = 0
 nss = 25
@@ -44,6 +64,27 @@ airtime = 10
 # Dragino HAT v1.4 does not use SX126x DIO2 RF switch control.
 dio2.rfswitch = false
 
+# GPS (Dragino HAT v1.4 onboard GPS module)
+#
+# The GPS is connected to the Pi UART.  Before enabling GPS you must
+# disable the serial console and enable the serial hardware port:
+#
+#   sudo raspi-config
+#   Interface Options -> Serial Port
+#     Login shell over serial?  No
+#     Enable serial hardware?   Yes
+#
+# Then set enabled = true below.
+[gps]
+enabled = false
+mode = "average"
+device = "/dev/serial0"
+baud = 9600
+sample_interval_seconds = 60
+retention_days = 365
+# history_file = "/var/lib/meshcore/gps-history.csv"
+# state_file   = "/var/lib/meshcore/gps-state.json"
+
 [device.repeater1]
 type = "repeater"
 name = "Pi5 Dragino Repeater"
@@ -51,6 +92,6 @@ name = "Pi5 Dragino Repeater"
 # Optional fixed identity (otherwise generated at first run)
 # privatekey = "<64-or-128-hex-chars>"
 
-# Optional location
+# Optional location (overrides GPS if set)
 # lat = 51.5
 # lon = -0.12
