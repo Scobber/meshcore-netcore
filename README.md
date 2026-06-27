@@ -192,6 +192,9 @@ The services execute:
 /usr/local/bin/meshcore-companion --service companion /etc/meshcore-netcore/config.toml
 ```
 
+Only `meshcore-web --service web` hosts the HTTP management server (`[server.web].port`).
+`meshcore-repeater` and `meshcore-companion` run radio/device workloads only and do not bind the web port.
+
 Each service has a dedicated log file in `/var/log/meshcore-netcore`:
 
 - `meshcore-web.log`
@@ -320,8 +323,7 @@ The ``devices`` option selects which of the device profiles defined in the
 config file are in use.
 
 The default config file creates a single repeater by default on the
-generic LoRa path, and the relay dashboard shows the live nodes and
-packet stream it can see. The companion identity used by the host is
+generic LoRa path. The companion identity used by the host is
 stored in `/etc/meshcore-netcore/private`.
 
 If the key file does not exist, the host generates it during startup and
