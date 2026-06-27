@@ -158,10 +158,19 @@ public sealed class MeshHost
                 case "lora":
                     result.Add(new LinuxLoRaInterface(resolvedName, BuildLoRaOptions(section)));
                     break;
+                case "waveshare-hat":
+                case "waveshare":
+                    result.Add(new LinuxLoRaInterface(
+                        resolvedName,
+                        BuildLoRaOptions(section, LoRaHardwarePresets.WaveshareHat(GetString(section, "profile") ?? GetString(section, "region") ?? GetString(section, "band")))));
+                    break;
                 case "dragino-hat":
                 case "dragino":
                 case "pi-hat":
-                    result.Add(new DraginoPiHatInterface(resolvedName, GetString(section, "region") ?? GetString(section, "band"), BuildLoRaOptions(section)));
+                    result.Add(new DraginoPiHatInterface(
+                        resolvedName,
+                        GetString(section, "region") ?? GetString(section, "band"),
+                        BuildLoRaOptions(section, LoRaHardwarePresets.DraginoLoRaHatV14(GetString(section, "profile") ?? GetString(section, "region") ?? GetString(section, "band")))));
                     break;
                 default:
                     // Unknown interface types stay harmless in development instead of aborting startup.
@@ -473,32 +482,35 @@ public sealed class MeshHost
         };
     }
 
-    private LoRaOptions BuildLoRaOptions(Dictionary<string, object?>? section)
+    private LoRaOptions BuildLoRaOptions(Dictionary<string, object?>? section, LoRaOptions? defaults = null)
     {
-        var profileKey = GetString(section, "profile") ?? GetString(section, "region") ?? GetString(section, "band");
-        var profile = LoRaProfile.ResolveOrDefault(profileKey);
-        var configuredFrequency = GetInt(section, "frequency", (int)profile.Frequency);
+        var fallback = defaults ?? LoRaHardwarePresets.GenericPiSx126x(GetString(section, "profile") ?? GetString(section, "region") ?? GetString(section, "band"));
 
         return new LoRaOptions(
-            SpiBus: GetInt(section, "spi", 0),
-            ChipSelect: GetInt(section, "cs", 0),
-            ResetPin: GetInt(section, "reset", 18),
-            BusyPin: GetInt(section, "busy", 20),
-            IrqPin: GetInt(section, "irq", 16),
-            TxEnablePin: GetInt(section, "txen", 6),
-            RxEnablePin: GetInt(section, "rxen", -1),
-            WakePin: GetInt(section, "wake", -1),
-            Frequency: (uint)configuredFrequency,
-            SpreadingFactor: (byte)GetInt(section, "sf", profile.SpreadingFactor),
-            Bandwidth: (uint)GetInt(section, "bw", (int)profile.Bandwidth),
-            CodingRate: (byte)GetInt(section, "cr", profile.CodingRate),
-            TxPower: (sbyte)GetInt(section, "txpower", profile.TxPower),
-            AirtimeDutyCycle: GetDouble(section, "airtime", 10),
-            Dio2RfSwitch: GetBool(section, "dio2.rfswitch", false),
+            SpiBus: GetInt(section, "spi", fallback.SpiBus),
+            ChipSelect: GetInt(section, "cs", fallback.ChipSelect),
+            ResetPin: GetInt(section, "reset", fallback.ResetPin),
+            BusyPin: GetInt(section, "busy", fallback.BusyPin),
+            IrqPin: GetInt(section, "irq", fallback.IrqPin),
+            TxEnablePin: GetInt(section, "txen", fallback.TxEnablePin),
+            RxEnablePin: GetInt(section, "rxen", fallback.RxEnablePin),
+            WakePin: GetInt(section, "wake", fallback.WakePin),
+            Frequency: (uint)GetInt(section, "frequency", (int)fallback.Frequency),
+            SpreadingFactor: (byte)GetInt(section, "sf", fallback.SpreadingFactor),
+            Bandwidth: (uint)GetInt(section, "bw", (int)fallback.Bandwidth),
+            CodingRate: (byte)GetInt(section, "cr", fallback.CodingRate),
+            TxPower: (sbyte)GetInt(section, "txpower", fallback.TxPower),
+            AirtimeDutyCycle: GetDouble(section, "airtime", fallback.AirtimeDutyCycle),
+            Dio2RfSwitch: GetBool(section, "dio2.rfswitch", fallback.Dio2RfSwitch),
             Dio3Voltage: TryGetDouble(section, "dio3.voltage", out var voltage) ? voltage : null,
             Dio3TcxoDelay: TryGetDouble(section, "dio3.tcxo_delay", out var delay) ? delay : null,
-            ChipKind: GetString(section, "chip") ?? GetString(section, "hal") ?? "sx126x",
-            RequireHardware: GetBool(section, "require_hardware", true));
+            ChipKind: GetString(section, "chip") ?? GetString(section, "hal") ?? fallback.ChipKind ?? "sx126x",
+            RequireHardware: GetBool(section, "require_hardware", fallback.RequireHardware),
+            ChipSelectPin: TryGetInt(section, "nss", out var nssPin)
+                ? nssPin
+                : TryGetInt(section, "cs.pin", out var chipSelectPin)
+                    ? chipSelectPin
+                    : fallback.ChipSelectPin);
     }
 
     private Dictionary<string, object?>? GetSection(params string[] path)
@@ -554,6 +566,18 @@ public sealed class MeshHost
         return int.TryParse(value.ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed)
             ? parsed
             : defaultValue;
+    }
+
+    private bool TryGetInt(Dictionary<string, object?>? section, string key, out int value)
+    {
+        if (section is not null && section.TryGetValue(key, out var raw) && raw is not null &&
+            int.TryParse(raw.ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out value))
+        {
+            return true;
+        }
+
+        value = 0;
+        return false;
     }
 
     private double GetDouble(Dictionary<string, object?>? section, string key, double defaultValue)

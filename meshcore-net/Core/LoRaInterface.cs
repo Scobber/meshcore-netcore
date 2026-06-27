@@ -26,7 +26,8 @@ public sealed record LoRaOptions(
     double? Dio3Voltage,
     double? Dio3TcxoDelay,
     string? ChipKind = "sx126x",
-    bool RequireHardware = true);
+    bool RequireHardware = true,
+    int? ChipSelectPin = null);
 
 public class LinuxLoRaInterface : MeshInterfaceBase
 {
@@ -161,5 +162,4 @@ public class LinuxLoRaInterface : MeshInterfaceBase
         }
     }
 }
-
 

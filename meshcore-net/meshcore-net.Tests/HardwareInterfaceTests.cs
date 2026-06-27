@@ -62,6 +62,35 @@ public class HardwareInterfaceTests
         Assert.Equal(14_247_821u, frf);
     }
 
+    [Fact]
+    public void DraginoHatPresetUsesSx127xChipsetAndManualNssPin()
+    {
+        var options = LoRaHardwarePresets.DraginoLoRaHatV14("868");
+
+        Assert.Equal("sx127x", options.ChipKind);
+        Assert.Equal(25, options.ChipSelectPin);
+        Assert.Equal(17, options.ResetPin);
+        Assert.Equal(-1, options.BusyPin);
+        Assert.Equal(4, options.IrqPin);
+        Assert.Equal(-1, options.TxEnablePin);
+        Assert.Equal(869_618_000u, options.Frequency);
+    }
+
+    [Fact]
+    public void WaveshareHatPresetUsesSx126xDefaults()
+    {
+        var options = LoRaHardwarePresets.WaveshareHat("868");
+
+        Assert.Equal("sx126x", options.ChipKind);
+        Assert.Null(options.ChipSelectPin);
+        Assert.Equal(18, options.ResetPin);
+        Assert.Equal(20, options.BusyPin);
+        Assert.Equal(16, options.IrqPin);
+        Assert.Equal(6, options.TxEnablePin);
+        Assert.True(options.Dio2RfSwitch);
+        Assert.Equal(869_618_000u, options.Frequency);
+    }
+
     private static LoRaOptions DefaultLoRaOptions() => new(
         SpiBus: 0,
         ChipSelect: 0,

@@ -22,32 +22,7 @@ public sealed class DraginoPiHatInterface : LinuxLoRaInterface
             return options;
         }
 
-        var frequency = NormalizeRegion(region) switch
-        {
-            "433" => 433_000_000u,
-            "915" => 915_000_000u,
-            "868" => 868_000_000u,
-            _ => 869_618_000u
-        };
-
-        return new LoRaOptions(
-            SpiBus: 0,
-            ChipSelect: 0,
-            ResetPin: 25,
-            BusyPin: 24,
-            IrqPin: 23,
-            TxEnablePin: 4,
-            RxEnablePin: -1,
-            WakePin: -1,
-            Frequency: frequency,
-            SpreadingFactor: 8,
-            Bandwidth: 62_500,
-            CodingRate: 8,
-            TxPower: 22,
-            AirtimeDutyCycle: 10,
-            Dio2RfSwitch: false,
-            Dio3Voltage: null,
-            Dio3TcxoDelay: null);
+        return LoRaHardwarePresets.DraginoLoRaHatV14(region);
     }
 
     private static string NormalizeRegion(string? region)

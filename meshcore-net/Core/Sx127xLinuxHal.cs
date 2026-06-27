@@ -90,6 +90,16 @@ public sealed class ManagedSx127xRadio : ISxRadioHal
 
         OpenPin(_options.ResetPin, PinMode.Output);
         OpenPin(_options.BusyPin, PinMode.Input);
+        if (_options.IrqPin >= 0)
+        {
+            OpenPin(_options.IrqPin, PinMode.Input);
+        }
+        if (_options.ChipSelectPin is int chipSelectPin && chipSelectPin >= 0)
+        {
+            OpenPin(chipSelectPin, PinMode.Output);
+            _gpio?.Write(chipSelectPin, PinValue.High);
+        }
+
         if (_options.TxEnablePin >= 0)
         {
             OpenPin(_options.TxEnablePin, PinMode.Output);
@@ -211,7 +221,7 @@ public sealed class ManagedSx127xRadio : ISxRadioHal
         }
 
         var write = new byte[] { (byte)(0x80 | register), value };
-        _spi.Write(write);
+        WithChipSelected(spi => spi.Write(write));
     }
 
     private byte ReadRegister(byte register)
@@ -223,7 +233,7 @@ public sealed class ManagedSx127xRadio : ISxRadioHal
 
         var write = new byte[] { register, 0x00 };
         var read = new byte[2];
-        _spi.TransferFullDuplex(write, read);
+        WithChipSelected(spi => spi.TransferFullDuplex(write, read));
         return read[1];
     }
 
@@ -237,7 +247,7 @@ public sealed class ManagedSx127xRadio : ISxRadioHal
         var write = new byte[payload.Length + 1];
         write[0] = RegFifo;
         payload.CopyTo(write, 1);
-        _spi.Write(write);
+        WithChipSelected(spi => spi.Write(write));
     }
 
     private byte[] ReadFifo(int length)
@@ -250,7 +260,7 @@ public sealed class ManagedSx127xRadio : ISxRadioHal
         var write = new byte[length + 1];
         var read = new byte[length + 1];
         write[0] = RegFifo;
-        _spi.TransferFullDuplex(write, read);
+        WithChipSelected(spi => spi.TransferFullDuplex(write, read));
         return read[1..];
     }
 
@@ -288,6 +298,30 @@ public sealed class ManagedSx127xRadio : ISxRadioHal
         catch (UnauthorizedAccessException ex)
         {
             throw new InvalidOperationException($"Unable to open GPIO pin {pin} - insufficient permissions. Please run with root privileges or use a GPIO driver that doesn't require elevated permissions.", ex);
+        }
+    }
+
+    private void WithChipSelected(Action<SpiDevice> action)
+    {
+        if (_spi is null)
+        {
+            throw new InvalidOperationException("SX127x radio is not initialized.");
+        }
+
+        if (_gpio is null || _options.ChipSelectPin is not int chipSelectPin || chipSelectPin < 0)
+        {
+            action(_spi);
+            return;
+        }
+
+        _gpio.Write(chipSelectPin, PinValue.Low);
+        try
+        {
+            action(_spi);
+        }
+        finally
+        {
+            _gpio.Write(chipSelectPin, PinValue.High);
         }
     }
 
