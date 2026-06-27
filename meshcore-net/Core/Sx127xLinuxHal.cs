@@ -90,7 +90,10 @@ public sealed class ManagedSx127xRadio : ISxRadioHal
 
         OpenPin(_options.ResetPin, PinMode.Output);
         OpenPin(_options.BusyPin, PinMode.Input);
-        OpenPin(_options.IrqPin, PinMode.Input);
+        if (_options.IrqPin >= 0)
+        {
+            OpenPin(_options.IrqPin, PinMode.Input);
+        }
         if (_options.ChipSelectPin is int chipSelectPin && chipSelectPin >= 0)
         {
             OpenPin(chipSelectPin, PinMode.Output);
