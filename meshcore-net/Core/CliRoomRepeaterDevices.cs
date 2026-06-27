@@ -51,6 +51,11 @@ public class CliMeshDevice : BasicMeshDevice
 
     public IdentityStore NeighbourIdentities { get; }
 
+    /// <summary>
+    /// All heard nodes regardless of type or hop count. Used for the web-server "seen nodes" view.
+    /// </summary>
+    public IdentityStore HeardIdentities { get; } = new IdentityStore();
+
     public override async Task StartAsync(CancellationToken cancellationToken, MeshDispatcher dispatcher)
     {
         await base.StartAsync(cancellationToken, dispatcher).ConfigureAwait(false);
@@ -60,17 +65,19 @@ public class CliMeshDevice : BasicMeshDevice
 
     public override Task RxAdvertAsync(MeshAdvertPacket packet, CancellationToken cancellationToken)
     {
-        if (packet.Advert.Type != MeshAdvertType.Repeater || packet.PathLength != 0)
-        {
-            return Task.CompletedTask;
-        }
-
         var identity = new MeshIdentity(packet.Advert, advertPath: packet.Path)
         {
             Rssi = packet.Rssi,
             Snr = packet.Snr
         };
-        NeighbourIdentities.AddIdentity(identity);
+        HeardIdentities.AddIdentity(identity);
+
+        // NeighbourIdentities tracks only direct-hop repeaters for routing purposes.
+        if (packet.Advert.Type == MeshAdvertType.Repeater && packet.PathLength == 0)
+        {
+            NeighbourIdentities.AddIdentity(identity);
+        }
+
         return Task.CompletedTask;
     }
 

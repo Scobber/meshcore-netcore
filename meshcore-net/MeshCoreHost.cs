@@ -429,7 +429,7 @@ public sealed class MeshHost
     private IReadOnlyList<object> BuildVisibleNodesSnapshot()
     {
         return _relayVisibleDevices
-            .SelectMany(device => device.NeighbourIdentities.GetAll().OfType<MeshIdentity>().Select(identity => new
+            .SelectMany(device => device.HeardIdentities.GetAll().OfType<MeshIdentity>().Select(identity => new
             {
                 key = Convert.ToHexString(identity.PublicKey).ToLowerInvariant(),
                 name = identity.Name,

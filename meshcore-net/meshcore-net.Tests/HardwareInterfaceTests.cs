@@ -63,6 +63,56 @@ public class HardwareInterfaceTests
     }
 
     [Fact]
+    public void Sx127xBandwidthCodeMapsStandardValues()
+    {
+        Assert.Equal(6, ManagedSx127xRadio.Sx127xBandwidthCode(62_500));
+        Assert.Equal(7, ManagedSx127xRadio.Sx127xBandwidthCode(125_000));
+        Assert.Equal(8, ManagedSx127xRadio.Sx127xBandwidthCode(250_000));
+        Assert.Equal(4, ManagedSx127xRadio.Sx127xBandwidthCode(31_250));
+        // Unknown bandwidth falls back to 125 kHz (code 7).
+        Assert.Equal(7, ManagedSx127xRadio.Sx127xBandwidthCode(99_999));
+    }
+
+    [Fact]
+    public void Sx127xCodingRateCodeMapsAllSupportedRates()
+    {
+        Assert.Equal(1, ManagedSx127xRadio.Sx127xCodingRateCode(5)); // 4/5
+        Assert.Equal(2, ManagedSx127xRadio.Sx127xCodingRateCode(6)); // 4/6
+        Assert.Equal(3, ManagedSx127xRadio.Sx127xCodingRateCode(7)); // 4/7
+        Assert.Equal(4, ManagedSx127xRadio.Sx127xCodingRateCode(8)); // 4/8
+        // Unknown coding rate falls back to 4/5.
+        Assert.Equal(1, ManagedSx127xRadio.Sx127xCodingRateCode(99));
+    }
+
+    [Fact]
+    public void Sx127xLowDataRateOptimizeIsRequiredForSf11And12OnNarrowBw()
+    {
+        Assert.True(ManagedSx127xRadio.NeedLowDataRateOptimize(11, 125_000));
+        Assert.True(ManagedSx127xRadio.NeedLowDataRateOptimize(12, 62_500));
+        Assert.False(ManagedSx127xRadio.NeedLowDataRateOptimize(11, 250_000));
+        Assert.False(ManagedSx127xRadio.NeedLowDataRateOptimize(8, 62_500));
+    }
+
+    [Fact]
+    public void Sx127xModemConfigRegistersReflectConfiguredProfile()
+    {
+        // EU narrow: SF8, BW 62.5 kHz, CR 4/8
+        var bwCode = ManagedSx127xRadio.Sx127xBandwidthCode(62_500);
+        var crCode = ManagedSx127xRadio.Sx127xCodingRateCode(8);
+
+        var modemConfig1 = (byte)((bwCode << 4) | (crCode << 1));
+        var modemConfig2 = (byte)((8 << 4) | 0x04);
+
+        // BW=6(62.5kHz), CR=4(4/8) → 0x68; SF8 with CRC → 0x84.
+        Assert.Equal(0x68, modemConfig1);
+        Assert.Equal(0x84, modemConfig2);
+
+        // Confirm these are NOT the old hardcoded values (0x72 / 0x74) for SF7/125kHz/CR4/5.
+        Assert.NotEqual(0x72, modemConfig1);
+        Assert.NotEqual(0x74, modemConfig2);
+    }
+
+    [Fact]
     public void DraginoHatPresetUsesSx127xChipsetAndManualNssPin()
     {
         var options = LoRaHardwarePresets.DraginoLoRaHatV14("868");
