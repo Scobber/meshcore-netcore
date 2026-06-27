@@ -31,24 +31,25 @@ The host now understands a Linux-only Dragino-style Pi HAT interface for SX radi
 name = "lora"
 type = "dragino-hat"
 region = "868"
-chip = "sx126x"
+chip = "sx127x"
 
 # Optional overrides:
 # spi = 0
 # cs = 0
-# reset = 25
-# busy = 24
-# irq = 23
-# txen = 4
+# nss = 25
+# reset = 17
+# busy = -1
+# irq = 4
+# txen = -1
 # frequency = 868000000
-# hal = "sx126x"
+# hal = "sx127x"
 ```
 
 Exact config steps:
 
 1. Choose the interface type: `type = "dragino-hat"` for the Raspberry Pi HAT flow.
 2. Set the region: `region = "433"`, `"868"`, or `"915"` to pick the board frequency that matches your radio and local rules.
-3. Select the SX HAL: `chip = "sx126x"` uses the implemented Linux SX126x backend; `chip = "sx127x"` selects the HAL slot for a future SX127x backend.
-4. Optionally override the SPI/GPIO pins with the `spi`, `cs`, `reset`, `busy`, `irq`, `txen`, and `frequency` settings.
+3. Select the SX HAL: `chip = "sx126x"` uses the SX126x backend; `chip = "sx127x"` uses the SX127x backend for Dragino LoRa HAT boards.
+4. Optionally override the SPI/GPIO pins with the `spi`, `cs`, `nss`, `reset`, `busy`, `irq`, `txen`, and `frequency` settings.
 
 The HAL selection is centralized in the LoRa transport layer, so adding a new SX backend later only needs a new implementation behind the same config key.

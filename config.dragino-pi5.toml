@@ -16,19 +16,20 @@ port = 80
 admin.password = "change-this-now"
 guest.open = true
 
-# Dragino LoRa HAT v1.4 (SX126x)
+# Dragino LoRa HAT v1.4 (SX1276/SX1278 family)
 [interface.dragino]
 type = "dragino-hat"
 region = "868"
-chip = "sx126x"
+chip = "sx127x"
 
-# Raspberry Pi 5 SPI/GPIO mapping used by current meshcore-net host defaults
+# Raspberry Pi 5 SPI/GPIO mapping for Dragino LoRa HAT v1.4
 spi = 0
 cs = 0
-reset = 18
-busy = 20
-irq = 16
-txen = 6
+nss = 25
+reset = 17
+busy = -1
+irq = 4
+txen = -1
 rxen = -1
 wake = -1
 
@@ -40,8 +41,7 @@ cr = 8
 txpower = 22
 airtime = 10
 
-# Dragino HAT v1.4 typically does not require DIO2 RF switch control
-# Set true only if your board wiring requires it.
+# Dragino HAT v1.4 does not use SX126x DIO2 RF switch control.
 dio2.rfswitch = false
 
 [device.repeater1]

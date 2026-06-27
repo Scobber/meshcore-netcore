@@ -42,7 +42,10 @@ pass_internal = true
 # Waveshare LoRa/GNSS HAT
 [interface.waveshare]
 # What kind of interface is this?
-type="lora"
+type="waveshare-hat"
+
+# Waveshare SX1262 HAT / LoRa-GNSS HAT
+chip = "sx126x"
 
 # UK/EU default
 frequency=869618000

@@ -413,8 +413,8 @@ FAQ
 
 Q. Do I have to run this on a Raspberry Pi?
 
-A. No, though the only supported directly connected interface is the
-   SX126x via SPI and GPIO.
+A. No, though the only supported directly connected interfaces are
+   SX126x and SX127x radios via SPI and GPIO.
 
 Q. Does it support the GPS functions of the Waveshare LoRa/GNSS HAT?
 

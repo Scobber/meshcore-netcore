@@ -333,6 +333,9 @@ public sealed partial class MeshWebServer
             <label>LoRa chip select:
                 <input id="cfg-repeater-cs" type="number" min="0" max="8" />
             </label>
+            <label>LoRa NSS pin:
+                <input id="cfg-repeater-nss" type="number" min="-1" max="512" />
+            </label>
             <label>LoRa reset pin:
                 <input id="cfg-repeater-reset" type="number" min="-1" max="512" />
             </label>
@@ -650,16 +653,16 @@ public sealed partial class MeshWebServer
             'dragino-hat': {
                 interfaceName: 'dragino',
                 interfaceType: 'dragino-hat',
-                chip: 'sx126x',
-                pins: { spi: 0, cs: 0, reset: 18, busy: 20, irq: 16, txen: 6, rxen: -1, wake: -1 },
+                chip: 'sx127x',
+                pins: { spi: 0, cs: 0, nss: 25, reset: 17, busy: -1, irq: 4, txen: -1, rxen: -1, wake: -1 },
                 dio2RfSwitch: false,
                 gps: { enabled: false, mode: 'average', device: '/dev/serial0', baud: 9600, sample: 60, retention: 365 }
             },
             'waveshare-hat': {
                 interfaceName: 'waveshare',
-                interfaceType: 'lora',
+                interfaceType: 'waveshare-hat',
                 chip: 'sx126x',
-                pins: { spi: 0, cs: 0, reset: 18, busy: 20, irq: 16, txen: 6, rxen: -1, wake: -1 },
+                pins: { spi: 0, cs: 0, nss: -1, reset: 18, busy: 20, irq: 16, txen: 6, rxen: -1, wake: -1 },
                 dio2RfSwitch: true,
                 gps: { enabled: true, mode: 'average', device: '/dev/serial0', baud: 9600, sample: 60, retention: 365 }
             },
@@ -667,7 +670,7 @@ public sealed partial class MeshWebServer
                 interfaceName: 'lora',
                 interfaceType: 'lora',
                 chip: 'sx126x',
-                pins: { spi: 0, cs: 0, reset: 18, busy: 20, irq: 16, txen: 6, rxen: -1, wake: -1 },
+                pins: { spi: 0, cs: 0, nss: -1, reset: 18, busy: 20, irq: 16, txen: 6, rxen: -1, wake: -1 },
                 dio2RfSwitch: false,
                 gps: { enabled: false, mode: 'average', device: '/dev/serial0', baud: 9600, sample: 60, retention: 365 }
             }
@@ -678,6 +681,10 @@ public sealed partial class MeshWebServer
             const normalizedName = (interfaceName ?? '').toString().toLowerCase();
             if (normalizedType === 'dragino-hat' || normalizedType === 'dragino' || normalizedType === 'pi-hat') {
                 return 'dragino-hat';
+            }
+
+            if (normalizedType === 'waveshare-hat' || normalizedType === 'waveshare') {
+                return 'waveshare-hat';
             }
 
             if (normalizedName === 'waveshare') {
@@ -700,6 +707,7 @@ public sealed partial class MeshWebServer
             document.getElementById('cfg-repeater-chip').value = preset.chip;
             document.getElementById('cfg-repeater-spi').value = preset.pins.spi;
             document.getElementById('cfg-repeater-cs').value = preset.pins.cs;
+            document.getElementById('cfg-repeater-nss').value = preset.pins.nss;
             document.getElementById('cfg-repeater-reset').value = preset.pins.reset;
             document.getElementById('cfg-repeater-busy').value = preset.pins.busy;
             document.getElementById('cfg-repeater-irq').value = preset.pins.irq;
@@ -777,23 +785,26 @@ public sealed partial class MeshWebServer
             const repeaterDeviceSection = getPath(config, ['device', 'repeater'], {});
             const companionDeviceSection = getPath(config, ['device', 'companion'], {});
             const gps = getPath(config, ['gps'], {});
+            const detectedPreset = detectHardwarePreset(repeaterInterfaceName, repeaterInterfaceSection);
+            const detectedPresetDefaults = hardwarePresets[detectedPreset] ?? hardwarePresets.custom;
 
             document.getElementById('cfg-web-port').value = getPath(config, ['server', 'web', 'port'], 80);
 
             document.getElementById('cfg-repeater-enabled').checked = repeaterEnabled;
             document.getElementById('cfg-repeater-name').value = repeaterDeviceSection.name ?? 'Mesh Relay';
             document.getElementById('cfg-repeater-interface-name').value = repeaterInterfaceName;
-            document.getElementById('cfg-repeater-hardware-preset').value = detectHardwarePreset(repeaterInterfaceName, repeaterInterfaceSection);
-            document.getElementById('cfg-repeater-chip').value = repeaterInterfaceSection.chip ?? 'sx126x';
-            document.getElementById('cfg-repeater-spi').value = repeaterInterfaceSection.spi ?? 0;
-            document.getElementById('cfg-repeater-cs').value = repeaterInterfaceSection.cs ?? 0;
-            document.getElementById('cfg-repeater-reset').value = repeaterInterfaceSection.reset ?? 18;
-            document.getElementById('cfg-repeater-busy').value = repeaterInterfaceSection.busy ?? 20;
-            document.getElementById('cfg-repeater-irq').value = repeaterInterfaceSection.irq ?? 16;
-            document.getElementById('cfg-repeater-txen').value = repeaterInterfaceSection.txen ?? 6;
-            document.getElementById('cfg-repeater-rxen').value = repeaterInterfaceSection.rxen ?? -1;
-            document.getElementById('cfg-repeater-wake').value = repeaterInterfaceSection.wake ?? -1;
-            document.getElementById('cfg-repeater-dio2-rfswitch').checked = !!repeaterInterfaceSection['dio2.rfswitch'];
+            document.getElementById('cfg-repeater-hardware-preset').value = detectedPreset;
+            document.getElementById('cfg-repeater-chip').value = repeaterInterfaceSection.chip ?? detectedPresetDefaults.chip;
+            document.getElementById('cfg-repeater-spi').value = repeaterInterfaceSection.spi ?? detectedPresetDefaults.pins.spi;
+            document.getElementById('cfg-repeater-cs').value = repeaterInterfaceSection.cs ?? detectedPresetDefaults.pins.cs;
+            document.getElementById('cfg-repeater-nss').value = repeaterInterfaceSection.nss ?? repeaterInterfaceSection['cs.pin'] ?? detectedPresetDefaults.pins.nss;
+            document.getElementById('cfg-repeater-reset').value = repeaterInterfaceSection.reset ?? detectedPresetDefaults.pins.reset;
+            document.getElementById('cfg-repeater-busy').value = repeaterInterfaceSection.busy ?? detectedPresetDefaults.pins.busy;
+            document.getElementById('cfg-repeater-irq').value = repeaterInterfaceSection.irq ?? detectedPresetDefaults.pins.irq;
+            document.getElementById('cfg-repeater-txen').value = repeaterInterfaceSection.txen ?? detectedPresetDefaults.pins.txen;
+            document.getElementById('cfg-repeater-rxen').value = repeaterInterfaceSection.rxen ?? detectedPresetDefaults.pins.rxen;
+            document.getElementById('cfg-repeater-wake').value = repeaterInterfaceSection.wake ?? detectedPresetDefaults.pins.wake;
+            document.getElementById('cfg-repeater-dio2-rfswitch').checked = repeaterInterfaceSection['dio2.rfswitch'] ?? !!detectedPresetDefaults.dio2RfSwitch;
 
             const configuredProfile = (repeaterInterfaceSection.profile ?? repeaterInterfaceSection.region ?? repeaterInterfaceSection.band ?? 'eu868-narrow').toString().toLowerCase();
             const profileInput = document.getElementById('cfg-repeater-profile');
@@ -865,6 +876,13 @@ public sealed partial class MeshWebServer
                 interfaceRoot[repeaterInterfaceName].chip = document.getElementById('cfg-repeater-chip').value;
                 interfaceRoot[repeaterInterfaceName].spi = Number(document.getElementById('cfg-repeater-spi').value || 0);
                 interfaceRoot[repeaterInterfaceName].cs = Number(document.getElementById('cfg-repeater-cs').value || 0);
+                const nssPin = Number(document.getElementById('cfg-repeater-nss').value || -1);
+                if (nssPin >= 0) {
+                    interfaceRoot[repeaterInterfaceName].nss = nssPin;
+                } else {
+                    delete interfaceRoot[repeaterInterfaceName].nss;
+                    delete interfaceRoot[repeaterInterfaceName]['cs.pin'];
+                }
                 interfaceRoot[repeaterInterfaceName].reset = Number(document.getElementById('cfg-repeater-reset').value || 18);
                 interfaceRoot[repeaterInterfaceName].busy = Number(document.getElementById('cfg-repeater-busy').value || 20);
                 interfaceRoot[repeaterInterfaceName].irq = Number(document.getElementById('cfg-repeater-irq').value || 16);

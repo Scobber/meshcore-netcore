@@ -75,7 +75,10 @@ readonly = false
 [interface.waveshare]
 
 # What kind of interface is this?
-type="lora"
+type="waveshare-hat"
+
+# Waveshare SX1262 HAT / LoRa-GNSS HAT
+chip = "sx126x"
 
 # UK/EU default
 frequency=869618000
@@ -145,4 +148,3 @@ interface = "wifi"
 
 # interface = "serial"
 # serial.port = "/dev/tnt0"
-
