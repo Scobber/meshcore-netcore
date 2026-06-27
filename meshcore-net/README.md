@@ -33,23 +33,74 @@ type = "dragino-hat"
 region = "868"
 chip = "sx127x"
 
-# Optional overrides:
+# Optional overrides (Pi 5 with spidev0.2 overlay — see setup section below):
 # spi = 0
-# cs = 0
-# nss = 25
+# cs = 2       # /dev/spidev0.2 — GPIO 25 hardware CS via dtoverlay
+# nss = -1     # kernel handles CS; no manual GPIO toggle needed
 # reset = 17
 # busy = -1
 # irq = 4
 # txen = -1
 # frequency = 868000000
-# hal = "sx127x"
 ```
 
-Exact config steps:
+### Raspberry Pi 5 — Dragino LoRa HAT v1.4 setup
 
-1. Choose the interface type: `type = "dragino-hat"` for the Raspberry Pi HAT flow.
-2. Set the region: `region = "433"`, `"868"`, or `"915"` to pick the board frequency that matches your radio and local rules.
-3. Select the SX HAL: `chip = "sx126x"` uses the SX126x backend; `chip = "sx127x"` uses the SX127x backend for Dragino LoRa HAT boards.
-4. Optionally override the SPI/GPIO pins with the `spi`, `cs`, `nss`, `reset`, `busy`, `irq`, `txen`, and `frequency` settings.
+The Dragino HAT v1.4 uses **GPIO 25** as its SPI chip select rather than the
+standard CE0/CE1 lines.  Without the custom overlay the radio will not respond.
 
-The HAL selection is centralized in the LoRa transport layer, so adding a new SX backend later only needs a new implementation behind the same config key.
+#### 1. Enable SPI
+
+```bash
+sudo raspi-config
+# Interface Options → SPI → Enable
+```
+
+Reboot, then verify:
+
+```bash
+ls /dev/spidev*
+# /dev/spidev0.0  /dev/spidev0.1
+```
+
+#### 2. Add the GPIO 25 chip-select overlay
+
+Add the following line to `/boot/firmware/config.txt`:
+
+```
+dtoverlay=spi0-3cs,cs2_pin=25
+```
+
+Reboot, then verify the third device node is present:
+
+```bash
+ls /dev/spidev*
+# /dev/spidev0.0  /dev/spidev0.1  /dev/spidev0.2
+```
+
+`/dev/spidev0.2` now uses GPIO 25 as its hardware chip select.
+
+In `config.dragino-pi5.toml` (or your equivalent config) set:
+
+```toml
+spi = 0
+cs  = 2      # opens /dev/spidev0.2 — GPIO 25 hardware CS via overlay
+nss = -1     # kernel handles CS; no manual GPIO toggle needed
+```
+
+#### 3. GPS (optional)
+
+The GPS module is wired to the UART.  First disable the serial console and
+enable the hardware UART:
+
+```bash
+sudo raspi-config
+# Interface Options → Serial Port
+#   Login shell over serial? No
+#   Enable serial hardware?  Yes
+```
+
+Then in your config set `[gps] enabled = true` and `device = "/dev/serial0"`.
+See `config.dragino-pi5.toml` for the full GPS block with all available options.
+
+
