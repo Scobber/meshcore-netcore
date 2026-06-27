@@ -54,8 +54,8 @@ public class CliMeshDevice : BasicMeshDevice
     public override async Task StartAsync(CancellationToken cancellationToken, MeshDispatcher dispatcher)
     {
         await base.StartAsync(cancellationToken, dispatcher).ConfigureAwait(false);
-        _ = Task.Run(() => FloodAdvertLoopAsync(cancellationToken), cancellationToken);
-        _ = Task.Run(() => DirectAdvertLoopAsync(cancellationToken), cancellationToken);
+        _ = Task.Run(() => FloodAdvertLoopAsync(cancellationToken), CancellationToken.None);
+        _ = Task.Run(() => DirectAdvertLoopAsync(cancellationToken), CancellationToken.None);
     }
 
     public override Task RxAdvertAsync(MeshAdvertPacket packet, CancellationToken cancellationToken)
@@ -325,6 +325,7 @@ public class CliMeshDevice : BasicMeshDevice
         var floodIntervalSeconds = (long)_floodAdvertInterval.TotalSeconds;
         var nextFlood = lastFlood + floodIntervalSeconds;
         var isTooSoonAfterLastFlood = (lastFlood + DirectAdvertSuppressionSeconds) > now;
+        // Skip direct adverts within the suppression window immediately before the next scheduled flood advert.
         var isApproachingNextFlood = nextFlood > now && (nextFlood - DirectAdvertSuppressionSeconds) < now;
         var isMissedFloodSchedule = nextFlood < now && floodIntervalSeconds > 0;
         return isTooSoonAfterLastFlood || isApproachingNextFlood || isMissedFloodSchedule;
