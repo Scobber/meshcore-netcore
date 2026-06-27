@@ -1,499 +1,8 @@
-using System.Globalization;
-using System.Security.Cryptography;
-using System.Security.Claims;
-using System.Diagnostics;
-using System.Text;
-using System.Text.Json;
-using Microsoft.AspNetCore.Authentication;
-using Microsoft.AspNetCore.Authentication.Cookies;
-using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.DataProtection;
-using Microsoft.AspNetCore.Hosting;
-using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
-
 namespace MeshCoreNet;
 
-public sealed class MeshWebServer
+public sealed partial class MeshWebServer
 {
-    private const string CredentialDirectoryPath = "/etc/meshcore-netcore";
-    private const string DataProtectionDirectoryPath = "/var/lib/meshcore/dataprotection-keys";
-        private const string FaviconSvg = """
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-    <rect width="64" height="64" rx="14" fill="#0f1724"/>
-    <circle cx="32" cy="32" r="20" fill="#0a9396" opacity="0.28"/>
-    <path d="M14 40l10-18 8 13 8-9 10 14" fill="none" stroke="#e8f0f5" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
-</svg>
-""";
-    private readonly Dictionary<string, object?> _config;
-    private readonly string _configPath;
-    private readonly int _port;
-    private readonly Func<object?>? _relaySnapshotProvider;
-    private readonly Func<object?>? _nodeSnapshotProvider;
-    private readonly Func<object?>? _debugSnapshotProvider;
-
-    public MeshWebServer(
-        Dictionary<string, object?> config,
-        string configPath,
-        Func<object?>? relaySnapshotProvider = null,
-        Func<object?>? nodeSnapshotProvider = null,
-        Func<object?>? debugSnapshotProvider = null)
-    {
-        _config = config;
-        _configPath = configPath;
-        _relaySnapshotProvider = relaySnapshotProvider;
-        _nodeSnapshotProvider = nodeSnapshotProvider;
-        _debugSnapshotProvider = debugSnapshotProvider;
-        _port = GetInt(GetSection("server", "web"), "port", 80);
-    }
-
-    public async Task StartAsync(CancellationToken cancellationToken)
-    {
-        EnsureAdminCredentialFiles();
-
-        var builder = WebApplication.CreateBuilder();
-        builder.WebHost.ConfigureKestrel(options =>
-        {
-            options.ListenAnyIP(_port);
-        });
-        builder.Logging.AddFilter("Microsoft.AspNetCore.Hosting.Diagnostics", LogLevel.Warning);
-        builder.Logging.AddFilter("Microsoft.AspNetCore.Routing.EndpointMiddleware", LogLevel.Warning);
-        builder.Logging.AddFilter("Microsoft.AspNetCore.Authorization", LogLevel.Warning);
-        builder.Logging.AddFilter("Microsoft.AspNetCore.Authentication", LogLevel.Warning);
-
-        Directory.CreateDirectory(DataProtectionDirectoryPath);
-        builder.Services
-            .AddDataProtection()
-            .PersistKeysToFileSystem(new DirectoryInfo(DataProtectionDirectoryPath))
-            .SetApplicationName("meshcore-web");
-
-        builder.Services.AddSingleton(this);
-        builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
-            .AddCookie(options =>
-            {
-                options.LoginPath = "/login";
-                options.Cookie.HttpOnly = true;
-                options.Cookie.SameSite = SameSiteMode.Strict;
-                options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
-            });
-
-        builder.Services.AddAuthorization();
-
-        var app = builder.Build();
-        app.Use(async (context, next) =>
-        {
-            var started = Stopwatch.StartNew();
-            Exception? caught = null;
-            try
-            {
-                await next();
-            }
-            catch (Exception ex)
-            {
-                caught = ex;
-                throw;
-            }
-            finally
-            {
-                started.Stop();
-                if (caught is null)
-                {
-                    Console.WriteLine($"HTTP {context.Request.Method} {context.Request.Path}{context.Request.QueryString} -> {context.Response.StatusCode} {started.ElapsedMilliseconds}ms");
-                }
-                else
-                {
-                    Console.Error.WriteLine($"HTTP {context.Request.Method} {context.Request.Path}{context.Request.QueryString} -> 500 {started.ElapsedMilliseconds}ms ({caught.GetType().Name}: {caught.Message})");
-                }
-            }
-        });
-
-        app.Use(async (context, next) =>
-        {
-            context.Response.Headers["X-Frame-Options"] = "DENY";
-            context.Response.Headers["X-Content-Type-Options"] = "nosniff";
-            context.Response.Headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
-            await next();
-        });
-
-        app.UseAuthentication();
-        app.UseAuthorization();
-
-        app.MapGet("/", () => Results.Redirect("/settings"));
-        app.MapGet("/favicon.svg", () => Results.Text(FaviconSvg, "image/svg+xml", Encoding.UTF8));
-        app.MapGet("/favicon.ico", () => Results.Redirect("/favicon.svg"));
-        app.MapGet("/login", async (HttpContext context) =>
-        {
-            if (context.User?.Identity?.IsAuthenticated is true)
-            {
-                context.Response.Redirect("/settings");
-                return;
-            }
-
-            context.Response.ContentType = "text/html; charset=utf-8";
-            await context.Response.WriteAsync(LoginPageHtml());
-        });
-
-        app.MapPost("/login", (Delegate)LoginHandler);
-        app.MapGet("/logout", async (HttpContext context) =>
-        {
-            await context.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
-            context.Response.Redirect("/login");
-        });
-
-        app.MapGet("/settings", [Authorize] async (HttpContext context) =>
-        {
-            context.Response.ContentType = "text/html; charset=utf-8";
-            await context.Response.WriteAsync(SettingsPageHtml());
-        });
-
-        app.MapGet("/api/status", [Authorize] () => Results.Json(new { status = "ok", port = _port, authenticated = true, version = VersionInfo.AppVersion }));
-        app.MapGet("/api/config", [Authorize] () => Results.Json(_config, new JsonSerializerOptions { WriteIndented = true }));
-        app.MapPost("/api/config", [Authorize] async (HttpContext context) =>
-        {
-            var document = await JsonDocument.ParseAsync(context.Request.Body);
-            var newConfig = JsonElementToObject(document.RootElement);
-            if (newConfig is not Dictionary<string, object?> configDictionary)
-            {
-                return Results.BadRequest(new { error = "Invalid configuration payload" });
-            }
-
-            _config.Clear();
-            foreach (var pair in configDictionary)
-            {
-                _config[pair.Key] = pair.Value;
-            }
-
-            await SaveConfigAsync(cancellationToken);
-            return Results.Ok(new { saved = true });
-        });
-
-        app.MapGet("/api/interfaces", [Authorize] () => Results.Json(GetSection("interface") ?? new Dictionary<string, object?>()));
-        app.MapGet("/api/devices", [Authorize] () => Results.Json(GetSection("device") ?? new Dictionary<string, object?>()));
-        app.MapGet("/api/nodes", [Authorize] () => Results.Json(_nodeSnapshotProvider?.Invoke() ?? new { count = 0, nodes = Array.Empty<object>() }));
-        app.MapGet("/api/node/{name}", [Authorize] (string name) =>
-        {
-            var snapshot = _nodeSnapshotProvider?.Invoke();
-            if (snapshot is null)
-            {
-                var section = GetSection("device", name);
-                return section is null ? Results.NotFound(new { error = "Node not found" }) : Results.Json(section);
-            }
-
-            return Results.Json(snapshot);
-        });
-        app.MapPost("/api/node/{name}", [Authorize] async (string name, HttpContext context) =>
-        {
-            var section = GetSection("device", name);
-            if (section is null)
-            {
-                section = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
-                SetSection("device", name, section);
-            }
-
-            var document = await JsonDocument.ParseAsync(context.Request.Body);
-            if (document.RootElement.ValueKind != JsonValueKind.Object)
-            {
-                return Results.BadRequest(new { error = "Invalid node payload" });
-            }
-
-            foreach (var property in document.RootElement.EnumerateObject())
-            {
-                section[property.Name] = JsonElementToObject(property.Value);
-            }
-
-            await SaveConfigAsync(cancellationToken);
-            return Results.Ok(new { saved = true, node = name });
-        });
-
-        app.MapDelete("/api/node/{name}", [Authorize] async (string name) =>
-        {
-            var nodes = GetSection("device");
-            if (nodes is null || !nodes.Remove(name))
-            {
-                return Results.NotFound(new { error = "Node not found" });
-            }
-
-            await SaveConfigAsync(cancellationToken);
-            return Results.Ok(new { removed = name });
-        });
-
-        app.MapGet("/api/relay", [Authorize] () => Results.Json(_relaySnapshotProvider?.Invoke() ?? new
-        {
-            server = GetSection("server"),
-            dispatcher = GetSection("dispatcher"),
-            devices = GetSection("device"),
-            interfaces = GetSection("interface")
-        }));
-
-        app.MapGet("/api/debug", [Authorize] () => Results.Json(_debugSnapshotProvider?.Invoke() ?? new
-        {
-            dispatcher = GetSection("dispatcher"),
-            packets = Array.Empty<object>()
-        }));
-
-        app.MapGet("/api/diagnostics", [Authorize] () => Results.Json(new
-        {
-            generatedAt = DateTimeOffset.UtcNow,
-            version = VersionInfo.AppVersion,
-            configPath = _configPath,
-            config = _config,
-            relay = _relaySnapshotProvider?.Invoke(),
-            nodes = _nodeSnapshotProvider?.Invoke(),
-            debug = _debugSnapshotProvider?.Invoke()
-        }, new JsonSerializerOptions { WriteIndented = true }));
-
-        app.MapPost("/api/reload", [Authorize] () => Results.Json(new { reloaded = false, message = "Reload is not supported without restarting the host." }));
-
-        app.MapGet("/api/login-info", [Authorize] async (HttpContext context) =>
-        {
-            var server = GetSection("server") ?? new Dictionary<string, object?>();
-            var loginSection = GetSection("server", "admin");
-            var filePassword = ReadCredentialFile("password");
-            var filePublic = ReadCredentialFile("public");
-            return Results.Json(new
-            {
-                server,
-                appVersion = VersionInfo.AppVersion,
-                adminEnabled = loginSection is not null || GetString(server, "admin.password") is not null || GetString(server, "admin.keys") is not null || !string.IsNullOrWhiteSpace(filePassword) || !string.IsNullOrWhiteSpace(filePublic)
-            });
-        });
-
-        Console.WriteLine($"MeshCore web management server starting on http://0.0.0.0:{_port}");
-        Console.WriteLine("MeshCore web middleware profile: accesslog-v2 favicon-svg dataprotection-local");
-        await app.RunAsync(cancellationToken);
-    }
-
-    private async Task<IResult> LoginHandler(HttpContext context)
-    {
-        var loginRequest = await ReadLoginRequestAsync(context);
-        if (loginRequest is null)
-        {
-            return Results.BadRequest(new { error = "Invalid login request" });
-        }
-
-        if (!IsAdminLogin(loginRequest))
-        {
-            return Results.Unauthorized();
-        }
-
-        var claims = new[]
-        {
-            new Claim(ClaimTypes.Name, "meshcore-admin"),
-            new Claim(ClaimTypes.Role, "Admin")
-        };
-
-        var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme));
-        await context.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, principal);
-        return Results.Redirect("/settings");
-    }
-
-    private static async Task<LoginRequest?> ReadLoginRequestAsync(HttpContext context)
-    {
-        if (context.Request.HasJsonContentType())
-        {
-            return await JsonSerializer.DeserializeAsync<LoginRequest>(context.Request.Body,
-                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-        }
-
-        var form = await context.Request.ReadFormAsync();
-        return new LoginRequest(
-            PublicKey: form["publicKey"].FirstOrDefault(),
-            Password: form["password"].FirstOrDefault());
-    }
-
-    private bool IsAdminLogin(LoginRequest request)
-    {
-        var serverSection = GetSection("server");
-        var adminPassword = serverSection is null ? null : GetString(serverSection, "admin.password");
-        adminPassword ??= ReadCredentialFile("password");
-        if (!string.IsNullOrWhiteSpace(request.Password) && request.Password == adminPassword)
-        {
-            return true;
-        }
-
-        if (!string.IsNullOrWhiteSpace(request.PublicKey))
-        {
-            var adminKeys = serverSection is null
-                ? new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-                : GetStringSet(serverSection, "admin.keys", "admin.pubkeys");
-            var filePublic = ReadCredentialFile("public");
-            if (!string.IsNullOrWhiteSpace(filePublic))
-            {
-                adminKeys.Add(filePublic);
-            }
-            if (adminKeys.Contains(request.PublicKey, StringComparer.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private Dictionary<string, object?>? GetSection(params string[] path)
-    {
-        object? current = _config;
-        foreach (var segment in path)
-        {
-            if (current is not Dictionary<string, object?> dictionary)
-            {
-                return null;
-            }
-
-            if (!dictionary.TryGetValue(segment, out current) || current is null)
-            {
-                return null;
-            }
-        }
-
-        return current as Dictionary<string, object?>;
-    }
-
-    private static string? GetString(Dictionary<string, object?> section, string key)
-    {
-        if (!section.TryGetValue(key, out var value) || value is null)
-        {
-            return null;
-        }
-
-        return value.ToString();
-    }
-
-    private string CredentialDirectory => CredentialDirectoryPath;
-
-    private string ReadCredentialPath(string name) => Path.Combine(CredentialDirectory, name);
-
-    private string? ReadCredentialFile(string name)
-    {
-        var path = ReadCredentialPath(name);
-        if (!File.Exists(path))
-        {
-            return null;
-        }
-
-        var value = File.ReadAllText(path).Trim();
-        return value.Length == 0 ? null : value;
-    }
-
-    private void EnsureAdminCredentialFiles()
-    {
-        try
-        {
-            Directory.CreateDirectory(CredentialDirectory);
-            var passwordPath = ReadCredentialPath("password");
-            var publicPath = ReadCredentialPath("public");
-            var privatePath = ReadCredentialPath("private");
-
-            if (!File.Exists(passwordPath) || string.IsNullOrWhiteSpace(File.ReadAllText(passwordPath)))
-            {
-                var passwordBytes = RandomNumberGenerator.GetBytes(24);
-                var password = Convert.ToBase64String(passwordBytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
-                File.WriteAllText(passwordPath, password + Environment.NewLine);
-                Console.WriteLine($"Generated admin password file: {passwordPath}");
-            }
-
-            if (!File.Exists(privatePath) || string.IsNullOrWhiteSpace(File.ReadAllText(privatePath)) || !File.Exists(publicPath) || string.IsNullOrWhiteSpace(File.ReadAllText(publicPath)))
-            {
-                var key = new MeshEd25519PrivateKey();
-                var privateHex = Convert.ToHexString(key.PrivateKey).ToLowerInvariant();
-                var publicHex = Convert.ToHexString(key.PublicKey).ToLowerInvariant();
-                File.WriteAllText(privatePath, privateHex + Environment.NewLine);
-                File.WriteAllText(publicPath, publicHex + Environment.NewLine);
-                Console.WriteLine($"Generated admin key files: {publicPath}, {privatePath}");
-            }
-        }
-        catch (Exception ex)
-        {
-            Console.Error.WriteLine($"Unable to initialize admin credential files in {CredentialDirectory}: {ex.Message}");
-        }
-    }
-
-    private void SetSection(string sectionName, string key, Dictionary<string, object?> section)
-    {
-        if (_config.TryGetValue(sectionName, out var existing) && existing is Dictionary<string, object?> existingSection)
-        {
-            existingSection[key] = section;
-            return;
-        }
-
-        _config[sectionName] = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
-        {
-            [key] = section
-        };
-    }
-
-    private async Task SaveConfigAsync(CancellationToken cancellationToken)
-    {
-        await File.WriteAllTextAsync(_configPath, MeshTomlWriter.Write(_config), Encoding.UTF8, cancellationToken);
-    }
-
-    private static ISet<string> GetStringSet(Dictionary<string, object?> section, params string[] keys)
-    {
-        var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var key in keys)
-        {
-            if (!section.TryGetValue(key, out var value) || value is null)
-            {
-                continue;
-            }
-
-            if (value is List<object?> values)
-            {
-                foreach (var item in values)
-                {
-                    if (item is not null)
-                    {
-                        result.Add(item.ToString()!);
-                    }
-                }
-            }
-            else
-            {
-                result.Add(value.ToString()!);
-            }
-        }
-
-        return result;
-    }
-
-    private static int GetInt(Dictionary<string, object?>? section, string key, int defaultValue)
-    {
-        if (section is null || !section.TryGetValue(key, out var value) || value is null)
-        {
-            return defaultValue;
-        }
-
-        return value switch
-        {
-            int intValue => intValue,
-            long longValue => (int)longValue,
-            double doubleValue => (int)doubleValue,
-            string stringValue when int.TryParse(stringValue, out var parsed) => parsed,
-            _ => defaultValue
-        };
-    }
-
     private static string FooterHtml() => $"<footer style=\"margin-top: 1.5rem; font-size: 0.85rem; color: #6a737d;\">MeshCore .NET host version {VersionInfo.AppVersion} — MIT license</footer>";
-
-    private static object? JsonElementToObject(JsonElement element)
-    {
-        return element.ValueKind switch
-        {
-            JsonValueKind.Object => element.EnumerateObject().ToDictionary(p => p.Name, p => JsonElementToObject(p.Value)),
-            JsonValueKind.Array => element.EnumerateArray().Select(JsonElementToObject).ToList(),
-            JsonValueKind.String => element.GetString(),
-            JsonValueKind.Number when element.TryGetInt64(out var longValue) => longValue,
-            JsonValueKind.Number when element.TryGetDouble(out var doubleValue) => doubleValue,
-            JsonValueKind.True => true,
-            JsonValueKind.False => false,
-            JsonValueKind.Null => null,
-            _ => element.GetRawText()
-        };
-    }
-
     private static string LoginPageHtml() => """
 <!DOCTYPE html>
 <html lang="en">
@@ -805,11 +314,45 @@ public sealed class MeshWebServer
             <label>LoRa interface name:
                 <input id="cfg-repeater-interface-name" type="text" />
             </label>
+            <label>LoRa hardware preset:
+                <select id="cfg-repeater-hardware-preset">
+                    <option value="dragino-hat">Dragino HAT</option>
+                    <option value="waveshare-hat">Waveshare HAT</option>
+                    <option value="custom">Custom config</option>
+                </select>
+            </label>
             <label>LoRa chip:
                 <select id="cfg-repeater-chip">
                     <option value="sx126x">sx126x</option>
                     <option value="sx127x">sx127x</option>
                 </select>
+            </label>
+            <label>LoRa SPI bus:
+                <input id="cfg-repeater-spi" type="number" min="0" max="8" />
+            </label>
+            <label>LoRa chip select:
+                <input id="cfg-repeater-cs" type="number" min="0" max="8" />
+            </label>
+            <label>LoRa reset pin:
+                <input id="cfg-repeater-reset" type="number" min="-1" max="512" />
+            </label>
+            <label>LoRa busy pin:
+                <input id="cfg-repeater-busy" type="number" min="-1" max="512" />
+            </label>
+            <label>LoRa IRQ pin:
+                <input id="cfg-repeater-irq" type="number" min="-1" max="512" />
+            </label>
+            <label>LoRa TX enable pin:
+                <input id="cfg-repeater-txen" type="number" min="-1" max="512" />
+            </label>
+            <label>LoRa RX enable pin:
+                <input id="cfg-repeater-rxen" type="number" min="-1" max="512" />
+            </label>
+            <label>LoRa wake pin:
+                <input id="cfg-repeater-wake" type="number" min="-1" max="512" />
+            </label>
+            <label>
+                <input id="cfg-repeater-dio2-rfswitch" type="checkbox" /> Use DIO2 RF switch
             </label>
             <label>LoRa region/profile:
                 <select id="cfg-repeater-profile">
@@ -1103,6 +646,80 @@ public sealed class MeshWebServer
             'jp920-wide': { frequency: 920800000, bw: 125000, sf: 8, cr: 8, txpower: 13 }
         };
 
+        const hardwarePresets = {
+            'dragino-hat': {
+                interfaceName: 'dragino',
+                interfaceType: 'dragino-hat',
+                chip: 'sx126x',
+                pins: { spi: 0, cs: 0, reset: 18, busy: 20, irq: 16, txen: 6, rxen: -1, wake: -1 },
+                dio2RfSwitch: false,
+                gps: { enabled: false, mode: 'average', device: '/dev/serial0', baud: 9600, sample: 60, retention: 365 }
+            },
+            'waveshare-hat': {
+                interfaceName: 'waveshare',
+                interfaceType: 'lora',
+                chip: 'sx126x',
+                pins: { spi: 0, cs: 0, reset: 18, busy: 20, irq: 16, txen: 6, rxen: -1, wake: -1 },
+                dio2RfSwitch: true,
+                gps: { enabled: true, mode: 'average', device: '/dev/serial0', baud: 9600, sample: 60, retention: 365 }
+            },
+            'custom': {
+                interfaceName: 'lora',
+                interfaceType: 'lora',
+                chip: 'sx126x',
+                pins: { spi: 0, cs: 0, reset: 18, busy: 20, irq: 16, txen: 6, rxen: -1, wake: -1 },
+                dio2RfSwitch: false,
+                gps: { enabled: false, mode: 'average', device: '/dev/serial0', baud: 9600, sample: 60, retention: 365 }
+            }
+        };
+
+        function detectHardwarePreset(interfaceName, interfaceSection) {
+            const normalizedType = (interfaceSection.type ?? '').toString().toLowerCase();
+            const normalizedName = (interfaceName ?? '').toString().toLowerCase();
+            if (normalizedType === 'dragino-hat' || normalizedType === 'dragino' || normalizedType === 'pi-hat') {
+                return 'dragino-hat';
+            }
+
+            if (normalizedName === 'waveshare') {
+                return 'waveshare-hat';
+            }
+
+            return 'custom';
+        }
+
+        function applyHardwarePresetDefaults(presetKey, setStatusMessage) {
+            const preset = hardwarePresets[presetKey];
+            if (!preset || presetKey === 'custom') {
+                if (setStatusMessage) {
+                    setStatus('Custom hardware selected. Adjust LoRa and GPS values manually.');
+                }
+                return;
+            }
+
+            document.getElementById('cfg-repeater-interface-name').value = preset.interfaceName;
+            document.getElementById('cfg-repeater-chip').value = preset.chip;
+            document.getElementById('cfg-repeater-spi').value = preset.pins.spi;
+            document.getElementById('cfg-repeater-cs').value = preset.pins.cs;
+            document.getElementById('cfg-repeater-reset').value = preset.pins.reset;
+            document.getElementById('cfg-repeater-busy').value = preset.pins.busy;
+            document.getElementById('cfg-repeater-irq').value = preset.pins.irq;
+            document.getElementById('cfg-repeater-txen').value = preset.pins.txen;
+            document.getElementById('cfg-repeater-rxen').value = preset.pins.rxen;
+            document.getElementById('cfg-repeater-wake').value = preset.pins.wake;
+            document.getElementById('cfg-repeater-dio2-rfswitch').checked = !!preset.dio2RfSwitch;
+
+            document.getElementById('cfg-gps-enabled').checked = !!preset.gps.enabled;
+            document.getElementById('cfg-gps-mode').value = preset.gps.mode;
+            document.getElementById('cfg-gps-device').value = preset.gps.device;
+            document.getElementById('cfg-gps-baud').value = preset.gps.baud;
+            document.getElementById('cfg-gps-sample').value = preset.gps.sample;
+            document.getElementById('cfg-gps-retention').value = preset.gps.retention;
+
+            if (setStatusMessage) {
+                setStatus(`Applied hardware defaults for ${presetKey}.`);
+            }
+        }
+
         function applyLoraProfileDefaults(profileKey) {
             if (!profileKey || profileKey === 'custom' || !(profileKey in loraProfiles)) {
                 return;
@@ -1166,7 +783,17 @@ public sealed class MeshWebServer
             document.getElementById('cfg-repeater-enabled').checked = repeaterEnabled;
             document.getElementById('cfg-repeater-name').value = repeaterDeviceSection.name ?? 'Mesh Relay';
             document.getElementById('cfg-repeater-interface-name').value = repeaterInterfaceName;
+            document.getElementById('cfg-repeater-hardware-preset').value = detectHardwarePreset(repeaterInterfaceName, repeaterInterfaceSection);
             document.getElementById('cfg-repeater-chip').value = repeaterInterfaceSection.chip ?? 'sx126x';
+            document.getElementById('cfg-repeater-spi').value = repeaterInterfaceSection.spi ?? 0;
+            document.getElementById('cfg-repeater-cs').value = repeaterInterfaceSection.cs ?? 0;
+            document.getElementById('cfg-repeater-reset').value = repeaterInterfaceSection.reset ?? 18;
+            document.getElementById('cfg-repeater-busy').value = repeaterInterfaceSection.busy ?? 20;
+            document.getElementById('cfg-repeater-irq').value = repeaterInterfaceSection.irq ?? 16;
+            document.getElementById('cfg-repeater-txen').value = repeaterInterfaceSection.txen ?? 6;
+            document.getElementById('cfg-repeater-rxen').value = repeaterInterfaceSection.rxen ?? -1;
+            document.getElementById('cfg-repeater-wake').value = repeaterInterfaceSection.wake ?? -1;
+            document.getElementById('cfg-repeater-dio2-rfswitch').checked = !!repeaterInterfaceSection['dio2.rfswitch'];
 
             const configuredProfile = (repeaterInterfaceSection.profile ?? repeaterInterfaceSection.region ?? repeaterInterfaceSection.band ?? 'eu868-narrow').toString().toLowerCase();
             const profileInput = document.getElementById('cfg-repeater-profile');
@@ -1206,6 +833,7 @@ public sealed class MeshWebServer
             const repeaterEnabled = document.getElementById('cfg-repeater-enabled').checked;
             const companionEnabled = document.getElementById('cfg-companion-enabled').checked;
             const repeaterInterfaceName = (document.getElementById('cfg-repeater-interface-name').value || 'lora').trim();
+            const selectedHardwarePreset = document.getElementById('cfg-repeater-hardware-preset').value;
 
             const devices = [];
             if (repeaterEnabled) {
@@ -1232,8 +860,18 @@ public sealed class MeshWebServer
                     interfaceRoot[repeaterInterfaceName] = {};
                 }
 
-                interfaceRoot[repeaterInterfaceName].type = 'lora';
+                const selectedPresetDefaults = hardwarePresets[selectedHardwarePreset] ?? hardwarePresets.custom;
+                interfaceRoot[repeaterInterfaceName].type = selectedPresetDefaults.interfaceType;
                 interfaceRoot[repeaterInterfaceName].chip = document.getElementById('cfg-repeater-chip').value;
+                interfaceRoot[repeaterInterfaceName].spi = Number(document.getElementById('cfg-repeater-spi').value || 0);
+                interfaceRoot[repeaterInterfaceName].cs = Number(document.getElementById('cfg-repeater-cs').value || 0);
+                interfaceRoot[repeaterInterfaceName].reset = Number(document.getElementById('cfg-repeater-reset').value || 18);
+                interfaceRoot[repeaterInterfaceName].busy = Number(document.getElementById('cfg-repeater-busy').value || 20);
+                interfaceRoot[repeaterInterfaceName].irq = Number(document.getElementById('cfg-repeater-irq').value || 16);
+                interfaceRoot[repeaterInterfaceName].txen = Number(document.getElementById('cfg-repeater-txen').value || 6);
+                interfaceRoot[repeaterInterfaceName].rxen = Number(document.getElementById('cfg-repeater-rxen').value || -1);
+                interfaceRoot[repeaterInterfaceName].wake = Number(document.getElementById('cfg-repeater-wake').value || -1);
+                interfaceRoot[repeaterInterfaceName]['dio2.rfswitch'] = document.getElementById('cfg-repeater-dio2-rfswitch').checked;
                 const selectedProfile = document.getElementById('cfg-repeater-profile').value;
                 if (selectedProfile && selectedProfile !== 'custom') {
                     interfaceRoot[repeaterInterfaceName].profile = selectedProfile;
@@ -1355,6 +993,10 @@ public sealed class MeshWebServer
         document.getElementById('reload').addEventListener('click', loadConfig);
         document.getElementById('save').addEventListener('click', saveConfig);
         document.getElementById('save-raw').addEventListener('click', saveRawConfig);
+        document.getElementById('cfg-repeater-hardware-preset').addEventListener('change', event => {
+            const selected = event.target.value;
+            applyHardwarePresetDefaults(selected, true);
+        });
         document.getElementById('cfg-repeater-profile').addEventListener('change', event => {
             const selected = event.target.value;
             if (selected === 'custom') {
@@ -1419,90 +1061,4 @@ public sealed class MeshWebServer
 </body>
 </html>
 """;
-    private sealed record LoginRequest(string? PublicKey, string? Password);
-}
-
-public static class MeshTomlWriter
-{
-    public static string Write(Dictionary<string, object?> config)
-    {
-        var builder = new StringBuilder();
-        WriteSection(builder, config, Array.Empty<string>());
-        return builder.ToString();
-    }
-
-    private static void WriteSection(StringBuilder builder, Dictionary<string, object?> section, IReadOnlyList<string> prefix)
-    {
-        var scalarKeys = section.Keys.Where(key => section[key] is not Dictionary<string, object?>).OrderBy(key => key).ToList();
-        foreach (var key in scalarKeys)
-        {
-            if (section[key] is Dictionary<string, object?>)
-            {
-                continue;
-            }
-
-            builder.Append(key);
-            builder.Append(" = ");
-            AppendValue(builder, section[key]);
-            builder.AppendLine();
-        }
-
-        foreach (var nested in section.Where(kvp => kvp.Value is Dictionary<string, object?>).OrderBy(kvp => kvp.Key, StringComparer.OrdinalIgnoreCase))
-        {
-            var sectionPath = prefix.Append(nested.Key).ToArray();
-            builder.AppendLine();
-            builder.Append('[');
-            builder.Append(string.Join('.', sectionPath));
-            builder.AppendLine("]");
-            WriteSection(builder, (Dictionary<string, object?>)nested.Value!, sectionPath);
-        }
-    }
-
-    private static void AppendValue(StringBuilder builder, object? value)
-    {
-        switch (value)
-        {
-            case null:
-                builder.Append("null");
-                break;
-            case bool boolValue:
-                builder.Append(boolValue ? "true" : "false");
-                break;
-            case int or long or double:
-                builder.AppendConvertInvariant(value);
-                break;
-            case string stringValue:
-                builder.Append('"');
-                builder.Append(stringValue.Replace("\"", "\\\""));
-                builder.Append('"');
-                break;
-            case List<object?> listValue:
-                builder.Append('[');
-                builder.Append(string.Join(", ", listValue.Select(FormatValue)));
-                builder.Append(']');
-                break;
-            default:
-                builder.Append('"');
-                builder.Append(value.ToString()?.Replace("\"", "\\\"") ?? string.Empty);
-                builder.Append('"');
-                break;
-        }
-    }
-
-    private static string FormatValue(object? value)
-    {
-        return value switch
-        {
-            null => string.Empty,
-            bool boolValue => boolValue ? "true" : "false",
-            int or long or double => value.ToString() ?? string.Empty,
-            string stringValue => '"' + stringValue.Replace("\"", "\\\"") + '"',
-            _ => '"' + value.ToString()?.Replace("\"", "\\\"") + '"'
-        };
-    }
-
-    private static void AppendConvertInvariant(this StringBuilder builder, object value)
-    {
-        builder.Append(Convert.ToString(value, CultureInfo.InvariantCulture));
-    }
 }
